@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Epsilon Program</title>
+  <script src="./script.js"></script>
+</head>
+<body>
+  <h1>Epsilon Program</h1>
+  <form name=form>
+    <textarea id="input" style="width:calc(100% - 8px);height:80px;text-align:left;white-space:nowrap;margin:0;border:1px solid black;resize:both;font-family:monospace;font-size:13.5px;padding:4px;" contentEditable>normalize EE_A(A_A_A)&#13;&#10;norm EE_A(A)&#13;&#10;abbreviate EE_{E(ε(0)×(1))}(E(ε(0)×(1))+EE_{E(ε([E(ε(0)×(1))])×(1))}(0))&#13;&#10;abbr EE_{E(ε(0)×(1))}(E(ε(0)×(1))+E(ε(0)×(1))+E(ε([E(ε(0)×(1))])×(1)))&#13;&#10;lessThan EE_A(0) EE_A(EE_A(0)+EE_A(0))&#13;&#10;< EE_A(A+EE_{A+A}(1)) EE_A(A+E(ε([A])×(EE_{A+A}(0)+1)))&#13;&#10;lessThanOrEqual EE_A(A+A+EE_{E(ε([A+A]))}(0)) EE_A(A+A+E(ε([A])))&#13;&#10;<= EE_A(A+EE_{A+A}(1)) EE_A(A+EE_{A+A}(1))&#13;&#10;expand EE_A(EE_{E(ε(0)+ε([A]))}(0)+A) 1&#13;&#10;expand EE_A(A+EE_{E(ε([A]))}(0)) 1,1,0&#13;&#10;inOT EE_A(A+A) 3</textarea>
+    <ul>
+      <li>Abbreviate: <input id="abbreviate" type="checkbox" checked></li>
+      <li>Details: <input id="detail" type="checkbox"></li>
+    </ul>
+    <input type="button" value="Compute" onclick="compute()">
+  </form>
+  <textarea id="output" style="width:calc(100% - 8px);height:400px;text-align:left;white-space:pre;margin:0;border:1px solid black;resize:both;font-family:monospace;font-size:13.5px;padding:4px;" readonly></textarea>
+  <div>
+    Commands:
+    <ul>
+      <li>
+        normalize/norm<br>
+        normalize X<br>
+        Normalizes X, is not affected by Abbreviate option
+      </li>
+      <li>
+        abbreviate/abbr<br>
+        abbreviate X<br>
+        Abbreviates X, is not affected by Abbreviate option
+      </li>
+      <li>
+        lessThan/&lt;<br>
+        lessThan X Y<br>
+        Judges whether X&lt;Y
+      </li>
+      <li>
+        lessThanOrEqual/&lt;=<br>
+        lessThanOrEqual X Y<br>
+        Judges whether X&leq;Y
+      </li>
+      <li>
+        inT<br>
+        inT X<br>
+        Judges whether X&in;T
+      </li>
+      <li>
+        inPT<br>
+        inPT X<br>
+        Judges whether X&in;PT
+      </li>
+      <li>
+        inAT<br>
+        inAT X<br>
+        Judges whether X&in;AT
+      </li>
+      <li>
+        inAAT<br>
+        inAAT X<br>
+        Judges whether X&in;AAT
+      </li>
+      <li>
+        inRT<br>
+        inRT X<br>
+        Judges whether X&in;RT
+      </li>
+      <li>
+        inPRT<br>
+        inPRT X<br>
+        Judges whether X&in;PRT
+      </li>
+      <li>
+        inRPT<br>
+        inRPT X<br>
+        Judges whether X&in;RPT
+      </li>
+      <li>
+        inPAT<br>
+        inPAT X<br>
+        Judges whether X&in;PAT
+      </li>
+      <li>
+        expand<br>
+        expand X n0 [n1 n2 ...]<br>
+        Calculates X[n0][n1][n2]...
+      </li>
+      <li>
+        inOT<br>
+        inOT X [n]<br>
+        Judges whether X&in;OT while limiting up to n-th element of fundamental sequence. n defaults to 3.
+      </li>
+    </ul>
+  </div>
+  <input type="text" id="copyarea" style="display:none"><br>
+  <div>Implementation of <a href="https://docs.google.com/document/d/15ETSEe2xMIz7wxE97qAhHcEhQT16rssIHcz_rffK6qo">ε関数 ver ε.0.1.0</a> by Jason (Retrieved 2020/12/27)</div>
+</body>
+</html>
