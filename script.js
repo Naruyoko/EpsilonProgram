@@ -34,172 +34,469 @@ function isMatchingParens(s){
     &&occurrences(s,"(")==occurrences(s,")");
 }
 function normalizeAbbreviations(s){
-  var olds;
-  var i=s.length;
-  while (i>0){
-    var r="E(";
-    var m=s.lastIndexOf(r,i-1);
-    if (m==-1||i==m) break;
-    i=m;
-    var ii=i+3;
-    var bs;
-    while (ii<=s.length&&!(s[ii-1]==")"&&isMatchingParens(s.slice(i,ii))&&(bs=decomposeArray(s.slice(i+2,ii-1),function(t){return equal(t,"ε(0)")||format["ε(0)×(*)"](t,inTnot0)||inPRT(t)||format["*×(*)"](t,inPRT,inTnot0);},"+")))) ii++;
-    if (ii>s.length) continue;
-    var b=s.slice(i,ii);
-    for (var iii=0;iii<bs.length;iii++){
-      if (equal(bs[iii],"ε(0)")||inPRT(bs[iii])) bs[iii]=bs[iii]+"×(1)";
-    }
-    var w="E("+bs.join("+")+")";
-    s=s.slice(0,i)+w+s.slice(i+b.length);
-  }
-  while (olds!=s){
-    olds=s;
-    var i=-1;
-    while (true){
-      var r=/A(?!_)/;
-      var o=r.exec(s.slice(i+1));
-      if (!o) break;
-      var m=o.index;
-      i=i+1+m;
-      var b=o[0];
-      var w="E(ε(0)×(1))";
-      if (s[i-1]=="_") w="{"+w+"}";
-      s=s.slice(0,i)+w+s.slice(i+b.length);
-    }
-    var i=-1;
-    while (true){
-      var r=/[0-9]+/;
-      var o=r.exec(s.slice(i+1));
-      if (!o) break;
-      var m=o.index;
-      i=i+1+m;
-      var b=o[0];
-      var n=+b;
-      if (n<2) continue;
-      var w="1+".repeat(n-1)+"1";
-      if (s[i-1]=="_") w="{"+w+"}";
-      s=s.slice(0,i)+w+s.slice(i+b.length);
-    }
-    var i=-1;
-    while (true){
-      var r="ω";
-      var m=s.indexOf(r,i+1);
-      if (m==-1) break;
-      i=m;
-      var b=s.slice(i,i+r.length);
-      var w="EE_{E(ε([A])×(1))}(0)";
-      if (s[i-1]=="_") w="{"+w+"}";
-      s=s.slice(0,i)+w+s.slice(i+b.length);
-    }
-    var i=s.length;
-    while (true){
-      var r="A_";
-      var m=s.lastIndexOf(r,i-1);
-      if (m==-1||i==m) break;
-      i=m;
-      var ii=i+2;
-      while (ii<=s.length&&!(s[ii]!="_"&&isMatchingParens(s.slice(i,ii))&&inTnot0(removeBrace(s.slice(i+2,ii))))) ii++;
-      if (ii>s.length) continue;
-      var b=s.slice(i,ii);
-      var w="E(ε(0)×("+removeBrace(b.slice(2))+"))";
-      if (s[i-1]=="_") w="{"+w+"}";
-      s=s.slice(0,i)+w+s.slice(i+b.length);
-    }
-  }
-  return s;
+  return Term(s)+"";
 }
 function abbreviate(s){
-  var olds;
-  while (olds!=s){
-    olds=s;
-    var i=-1;
-    while (true){
-      var r="E(ε(0))";
-      var m=s.indexOf(r,i+1);
-      if (m==-1) break;
-      i=m;
-      var b=s.slice(i,i+r.length);
-      var w="A";
-      s=s.slice(0,i)+w+s.slice(i+b.length);
+  return Term(s).toString(true);
+}
+
+function Term(s){
+  if (s instanceof Term) return s.clone();
+  else if (typeof s!="undefined"&&typeof s!="string") throw Error("Invalid expression: "+s);
+  if (s) return Term.build(s);
+  else return this;
+}
+Term.build=function (s){
+  if (s instanceof Term) return s.clone();
+  if (!isMatchingParens(s)) throw Error("Invalid expression: "+s);
+  var strin=s;
+  if (s=="") return NullTerm.build();
+  if (s=="0") return ZeroTerm.build();
+  if (s=="1") return OneTerm.build();
+  //s=normalizeAbbreviations(s);
+  if (!/^[AE_\(\)\[\]{}0-9εω\+×]+$/.test(s)) throw Error("Invalid expression: "+strin);
+  var nums="0123456789";
+  var alphas="abcdefghij";
+  function numToAlpha(n){
+    n=n+"";
+    for (var i=0;i<10;i++){
+      n=n.replaceAll(nums[i],alphas[i]);
     }
-    var i=-1;
-    while (true){
-      var r="E(ε(0)×(1))";
-      var m=s.indexOf(r,i+1);
-      if (m==-1) break;
-      i=m;
-      var b=s.slice(i,i+r.length);
-      var w="A";
-      s=s.slice(0,i)+w+s.slice(i+b.length);
+    return "<"+n+">";
+  }
+  function alphaToNum(s){
+    if (s[0]!="<"||s[s.length-1]!=">") throw Error("F");
+    s=s.slice(1,-1);
+    for (var i=0;i<10;i++){
+      s=s.replaceAll(alphas[i],nums[i]);
     }
-    var i=-1;
-    while (true){
-      var r=/1(\+1)*/;
-      var o=r.exec(s.slice(i+1));
-      if (!o) break;
-      var m=o.index;
-      i=i+1+m;
-      var b=o[0];
-      var w=String((b.length+1)/2);
-      s=s.slice(0,i)+w+s.slice(i+b.length);
+    return +s;
+  }
+  var subterms=[];
+  function newSubterm(t){
+    subterms.push(t);
+    return numToAlpha(subterms.length-1);
+  }
+  function getSubterm(n){
+    return subterms[alphaToNum(n)];
+  }
+  s=s.replace(/[0-9]+/g,function (n){return +n<2?n:"{1"+"+1".repeat(+n-1)+"}";});
+  while (true){
+    var manipulated=false;
+    if (s.indexOf("ω")!=-1){ //ω
+      manipulated=true;
+      s=s.replaceAll("ω",newSubterm(Term("EE_{E(ε([A])×(1))}(0)")));
     }
-    var i=-1;
-    while (true){
-      var r="EE_{E(ε([A]))}(0)";
-      var m=s.indexOf(r,i+1);
-      if (m==-1) break;
-      i=m;
-      var b=s.slice(i,i+r.length);
-      var w="ω";
-      s=s.slice(0,i)+w+s.slice(i+b.length);
+    if (/A(?!_)/.test(s)){ //A
+      manipulated=true;
+      s=s.replace(/A(?!_)/g,newSubterm(Term("E(ε(0)×(1))")));
     }
-    var i=-1;
-    while (true){
-      var r="EE_{E(ε([A])×(1))}(0)";
-      var m=s.indexOf(r,i+1);
-      if (m==-1) break;
-      i=m;
-      var b=s.slice(i,i+r.length);
-      var w="ω";
-      s=s.slice(0,i)+w+s.slice(i+b.length);
+    if (s.indexOf("0")!=-1){ //0
+      manipulated=true;
+      s=s.replaceAll("0",newSubterm(ZeroTerm.build()));
     }
-    var i=s.length;
-    while (true){
-      var r="E(ε(0)×(";
-      var m=s.lastIndexOf(r,i-1);
-      if (m==-1||i==m) break;
-      i=m;
-      var ii=i+10;
-      while (ii<=s.length&&!(s.slice(ii-2,ii)=="))"&&isMatchingParens(s.slice(i,ii))&&inTnot0(s.slice(i+8,ii-2)))) ii++;
-      if (ii>s.length) continue;
-      var b=s.slice(i,ii);
-      var w="A_"+(b.slice(8,-2).length>1?"{"+b.slice(8,-2)+"}":b.slice(8,-2));
-      s=s.slice(0,i)+w+s.slice(i+b.length);
+    if (s.indexOf("1")!=-1){ //1
+      manipulated=true;
+      s=s.replaceAll("1",newSubterm(OneTerm.build()));
     }
-    var i=-1;
-    while (true){
-      var r=/{.}/;
-      var o=r.exec(s.slice(i+1));
-      if (!o) break;
-      var m=o.index;
-      i=i+1+m;
-      var b=o[0];
-      var w=b[1];
-      s=s.slice(0,i)+w+s.slice(i+b.length);
+    if (/{<[a-j]+>}/.test(s)){ //{#}->#
+      manipulated=true;
+      s=s.replace(/{<[a-j]+>}/g,function (s){return s.slice(1,-1);});
     }
-    var i=-1;
-    while (true){
-      var r="×(1)";
-      var m=s.indexOf(r,i+1);
-      if (m==-1) break;
-      i=m;
-      var b=s.slice(i,i+r.length);
-      var w="";
-      s=s.slice(0,i)+w+s.slice(i+b.length);
+    if (/A_<[a-j]+>/.test(s)){ //A_#->E(ε(0)×(#))
+      manipulated=true;
+      s=s.replace(/A_<[a-j]+>/g,function (s){return "E(ε(0)×("+s.slice(2)+"))"});
+    }
+    if (/ε\(<[a-j]+>\)/.test(s)){ //ε(#)->#
+      manipulated=true;
+      s=s.replace(/ε\(<[a-j]+>\)/g,function (s){return newSubterm(SmallEpsilonTerm.build(getSubterm(s.slice(2,-1))));});
+    }
+    if (/ε\(\[<[a-j]+>\]\)/.test(s)){ //ε([#])->#
+      manipulated=true;
+      s=s.replace(/ε\(\[<[a-j]+>\]\)/g,function (s){return newSubterm(SmallEpsilonBracketTerm.build(getSubterm(s.slice(3,-2))));});
+    }
+    if (/E\(<[a-j]+>\)/.test(s)){ //E(#)->#
+      manipulated=true;
+      s=s.replace(/E\(<[a-j]+>\)/g,function (s){return newSubterm(CapitalEpsilonTerm.build(getSubterm(s.slice(2,-1))));});
+    }
+    if (/EE_<[a-j]+>\(<[a-j]+>\)/.test(s)){ //EE_#(#)->#
+      manipulated=true;
+      s=s.replace(/EE_<[a-j]+>\(<[a-j]+>\)/g,function (s){return newSubterm(DoubleCapitalEpsilonTerm.build(getSubterm(s.slice(3,s.indexOf("("))),getSubterm(s.slice(s.indexOf("(")+1,-1))));});
+    }
+    if (/<[a-j]+>×\(<[a-j]+>\)/.test(s)){ //#×(#)->#
+      manipulated=true;
+      s=s.replace(/<[a-j]+>×\(<[a-j]+>\)/g,function (s){return newSubterm(ProductTerm.build(getSubterm(s.slice(0,s.indexOf("×"))),getSubterm(s.slice(s.indexOf("(")+1,-1))));});
+    }
+    if (/<[a-j]+>(\+<[a-j]+>)+(?!×)/.test(s)){ //#+#+...+#->#
+      manipulated=true;
+      s=s.replace(/<[a-j]+>(\+<[a-j]+>)+(?!×)/g,function (s){return newSubterm(SumTerm.build(s.split("+").map(getSubterm)));});
+    }
+    if (/^<[a-j]+>$/.test(s)) break;
+    if (!manipulated) throw Error("Error parsing expression: "+strin);
+  }
+  return getSubterm(s);
+}
+Term.prototype.clone=function (){
+  throw Error("Cloning undefined for this term type.");
+}
+Term.clone=function (x){
+  return x.clone();
+}
+Term.prototype.toString=function (abbreviate){
+  throw Error("Stringification undefined for this term type.");
+}
+Term.prototype.toStringWithImplicitBrace=function (abbreviate){
+  return this.toString(abbreviate);
+}
+Term.prototype.equal=function (other){
+  throw Error("Equality undefined for this term type.");
+}
+Term.equal=function (x,y){
+  if (!(x instanceof Term)) x=Term(x);
+  x.equal(y);
+}
+Object.defineProperty(Term.prototype,"constructor",{
+  value:Term,
+  enumerable:false,
+  writable:true
+});
+
+function NullTerm(s){
+  if (s instanceof NullTerm) return s.clone();
+  else if (s instanceof Term&&typeof s!="string") throw Error("Invalid expression: "+s);
+  if (!(this instanceof NullTerm)) return new NullTerm(s);
+  var r=Term.call(this,s);
+  if (s&&!(r instanceof NullTerm)) throw Error("Invalid expression: "+s);
+  if (s) return r;
+}
+Object.assign(NullTerm,Term);
+NullTerm.build=function (){
+  var r=NullTerm();
+  return r;
+}
+NullTerm.prototype=Object.create(Term.prototype);
+NullTerm.prototype.clone=function (){
+  return NullTerm.build();
+}
+NullTerm.prototype.toString=function (abbreviate){
+  return "";
+}
+NullTerm.prototype.equal=function (other){
+  if (!(other instanceof Term)) other=Term(other);
+  return other instanceof NullTerm;
+}
+Object.defineProperty(NullTerm.prototype,"constructor",{
+  value:NullTerm,
+  enumerable:false,
+  writable:true
+});
+
+function ZeroTerm(s){
+  if (s instanceof ZeroTerm) return s.clone();
+  else if (s instanceof Term&&typeof s!="string") throw Error("Invalid expression: "+s);
+  if (!(this instanceof ZeroTerm)) return new ZeroTerm(s);
+  var r=Term.call(this,s);
+  if (s&&!(r instanceof ZeroTerm)) throw Error("Invalid expression: "+s);
+  if (s) return r;
+}
+Object.assign(ZeroTerm,Term);
+ZeroTerm.build=function (){
+  var r=ZeroTerm();
+  return r;
+}
+ZeroTerm.prototype=Object.create(Term.prototype);
+ZeroTerm.prototype.clone=function (){
+  return ZeroTerm.build();
+}
+ZeroTerm.prototype.toString=function (abbreviate){
+  return "0";
+}
+ZeroTerm.prototype.equal=function (other){
+  if (!(other instanceof Term)) other=Term(other);
+  return other instanceof ZeroTerm;
+}
+Object.defineProperty(ZeroTerm.prototype,"constructor",{
+  value:ZeroTerm,
+  enumerable:false,
+  writable:true
+});
+
+function OneTerm(s){
+  if (s instanceof OneTerm) return s.clone();
+  else if (s instanceof Term&&typeof s!="string") throw Error("Invalid expression: "+s);
+  if (!(this instanceof OneTerm)) return new OneTerm(s);
+  var r=Term.call(this,s);
+  if (s&&!(r instanceof OneTerm)) throw Error("Invalid expression: "+s);
+  if (s) return r;
+}
+Object.assign(OneTerm,Term);
+OneTerm.build=function (){
+  var r=OneTerm();
+  return r;
+}
+OneTerm.prototype=Object.create(Term.prototype);
+OneTerm.prototype.clone=function (){
+  return OneTerm.build();
+}
+OneTerm.prototype.toString=function (abbreviate){
+  return "1";
+}
+OneTerm.prototype.equal=function (other){
+  if (!(other instanceof Term)) other=Term(other);
+  return other instanceof OneTerm;
+}
+Object.defineProperty(OneTerm.prototype,"constructor",{
+  value:OneTerm,
+  enumerable:false,
+  writable:true
+});
+
+function SmallEpsilonTerm(s){
+  if (s instanceof SmallEpsilonTerm) return s.clone();
+  else if (s instanceof Term&&typeof s!="string") throw Error("Invalid expression: "+s);
+  if (!(this instanceof SmallEpsilonTerm)) return new SmallEpsilonTerm(s);
+  var r=Term.call(this,s);
+  if (s&&!(r instanceof SmallEpsilonTerm)) throw Error("Invalid expression: "+s);
+  if (s) return r;
+}
+Object.assign(SmallEpsilonTerm,Term);
+SmallEpsilonTerm.build=function (inner){
+  var r=SmallEpsilonTerm();
+  r.inner=Term(inner);
+  return r;
+}
+SmallEpsilonTerm.prototype=Object.create(Term.prototype);
+SmallEpsilonTerm.prototype.clone=function (){
+  return SmallEpsilonTerm.build(this.inner);
+}
+SmallEpsilonTerm.prototype.toString=function (abbreviate){
+  return "ε("+this.inner.toString(abbreviate)+")";
+}
+SmallEpsilonTerm.prototype.equal=function (other){
+  if (!(other instanceof Term)) other=Term(other);
+  return other instanceof SmallEpsilonTerm&&this.inner.equal(other.inner);
+}
+Object.defineProperty(SmallEpsilonTerm.prototype,"constructor",{
+  value:SmallEpsilonTerm,
+  enumerable:false,
+  writable:true
+});
+
+function SmallEpsilonBracketTerm(s){
+  if (s instanceof SmallEpsilonBracketTerm) return s.clone();
+  else if (s instanceof Term&&typeof s!="string") throw Error("Invalid expression: "+s);
+  if (!(this instanceof SmallEpsilonBracketTerm)) return new SmallEpsilonBracketTerm(s);
+  var r=Term.call(this,s);
+  if (s&&!(r instanceof SmallEpsilonBracketTerm)) throw Error("Invalid expression: "+s);
+  if (s) return r;
+}
+Object.assign(SmallEpsilonBracketTerm,Term);
+SmallEpsilonBracketTerm.build=function (inner){
+  var r=SmallEpsilonBracketTerm();
+  r.inner=Term(inner);
+  return r;
+}
+SmallEpsilonBracketTerm.prototype=Object.create(Term.prototype);
+SmallEpsilonBracketTerm.prototype.clone=function (){
+  return SmallEpsilonBracketTerm.build(this.inner);
+}
+SmallEpsilonBracketTerm.prototype.toString=function (abbreviate){
+  return "ε(["+this.inner.toString(abbreviate)+"])";
+}
+SmallEpsilonBracketTerm.prototype.equal=function (other){
+  if (!(other instanceof Term)) other=Term(other);
+  return other instanceof SmallEpsilonBracketTerm&&this.inner.equal(other.inner);
+}
+Object.defineProperty(SmallEpsilonBracketTerm.prototype,"constructor",{
+  value:SmallEpsilonBracketTerm,
+  enumerable:false,
+  writable:true
+});
+
+function CapitalEpsilonTerm(s){
+  if (s instanceof CapitalEpsilonTerm) return s.clone();
+  else if (s instanceof Term&&typeof s!="string") throw Error("Invalid expression: "+s);
+  if (!(this instanceof CapitalEpsilonTerm)) return new CapitalEpsilonTerm(s);
+  var r=Term.call(this,s);
+  if (s&&!(r instanceof CapitalEpsilonTerm)) throw Error("Invalid expression: "+s);
+  if (s) return r;
+}
+Object.assign(CapitalEpsilonTerm,Term);
+CapitalEpsilonTerm.build=function (inner){
+  var r=CapitalEpsilonTerm();
+  inner=Term(inner);
+  if (inner instanceof SumTerm){
+    r.inner=SumTerm.build(inner.terms.map(function (s){return s instanceof ProductTerm?s.clone():ProductTerm.build(s,OneTerm.build());}));
+  }else if (inner instanceof ProductTerm){
+    r.inner=inner.clone();
+  }else{
+    r.inner=ProductTerm.build(inner,OneTerm.build());
+  }
+  return r;
+}
+CapitalEpsilonTerm.prototype=Object.create(Term.prototype);
+CapitalEpsilonTerm.prototype.clone=function (){
+  return CapitalEpsilonTerm.build(this.inner);
+}
+CapitalEpsilonTerm.prototype.toString=function (abbreviate){
+  if (abbreviate&&this.inner instanceof ProductTerm&&this.inner.left instanceof SmallEpsilonTerm&&this.inner.left.inner instanceof ZeroTerm){
+    if (this.inner.right instanceof OneTerm) return "A";
+    else return "A_"+this.inner.right.toStringWithImplicitBrace(abbreviate);
+  }else{
+    return "E("+this.inner.toString(abbreviate)+")";
+  }
+}
+CapitalEpsilonTerm.prototype.equal=function (other){
+  if (!(other instanceof Term)) other=Term(other);
+  return other instanceof CapitalEpsilonTerm&&this.inner.equal(other.inner);
+}
+Object.defineProperty(CapitalEpsilonTerm.prototype,"constructor",{
+  value:CapitalEpsilonTerm,
+  enumerable:false,
+  writable:true
+});
+
+function DoubleCapitalEpsilonTerm(s){
+  if (s instanceof DoubleCapitalEpsilonTerm) return s.clone();
+  else if (s instanceof Term&&typeof s!="string") throw Error("Invalid expression: "+s);
+  if (!(this instanceof DoubleCapitalEpsilonTerm)) return new DoubleCapitalEpsilonTerm(s);
+  var r=Term.call(this,s);
+  if (s&&!(r instanceof DoubleCapitalEpsilonTerm)) throw Error("Invalid expression: "+s);
+  if (s) return r;
+}
+Object.assign(DoubleCapitalEpsilonTerm,Term);
+DoubleCapitalEpsilonTerm.build=function (sub,inner){
+  var r=DoubleCapitalEpsilonTerm();
+  r.sub=Term(sub);
+  r.inner=Term(inner);
+  return r;
+}
+DoubleCapitalEpsilonTerm.prototype=Object.create(Term.prototype);
+DoubleCapitalEpsilonTerm.prototype.clone=function (){
+  return DoubleCapitalEpsilonTerm.build(this.sub,this.inner);
+}
+DoubleCapitalEpsilonTerm.prototype.toString=function (abbreviate){
+  if (this.equal("ω")) return "ω";
+  else return "EE_"+this.sub.toStringWithImplicitBrace(abbreviate)+"("+this.inner.toString(abbreviate)+")";
+}
+DoubleCapitalEpsilonTerm.prototype.equal=function (other){
+  if (!(other instanceof Term)) other=Term(other);
+  return other instanceof DoubleCapitalEpsilonTerm&&this.sub.equal(other.sub)&&this.inner.equal(other.inner);
+}
+Object.defineProperty(DoubleCapitalEpsilonTerm.prototype,"constructor",{
+  value:DoubleCapitalEpsilonTerm,
+  enumerable:false,
+  writable:true
+});
+
+function ProductTerm(s){
+  if (s instanceof ProductTerm) return s.clone();
+  else if (s instanceof Term&&typeof s!="string") throw Error("Invalid expression: "+s);
+  if (!(this instanceof ProductTerm)) return new ProductTerm(s);
+  var r=Term.call(this,s);
+  if (s&&!(r instanceof ProductTerm)) throw Error("Invalid expression: "+s);
+  if (s) return r;
+}
+Object.assign(ProductTerm,Term);
+ProductTerm.build=function (left,right){
+  var r=ProductTerm();
+  r.left=Term(left);
+  r.right=Term(right);
+  return r;
+}
+ProductTerm.prototype=Object.create(Term.prototype);
+ProductTerm.prototype.clone=function (){
+  return ProductTerm.build(this.left,this.right);
+}
+ProductTerm.prototype.toString=function (abbreviate){
+  if (abbreviate&&this.right instanceof OneTerm) return this.left.toString(abbreviate);
+  else return this.left.toString(abbreviate)+"×("+this.right.toString(abbreviate)+")";
+}
+ProductTerm.prototype.equal=function (other){
+  if (!(other instanceof Term)) other=Term(other);
+  return other instanceof ProductTerm&&this.left.equal(other.left)&&this.right.equal(other.right);
+}
+Object.defineProperty(ProductTerm.prototype,"constructor",{
+  value:ProductTerm,
+  enumerable:false,
+  writable:true
+});
+
+function SumTerm(s){
+  if (s instanceof SumTerm) return s.clone();
+  else if (s instanceof Term&&typeof s!="string") throw Error("Invalid expression: "+s);
+  if (!(this instanceof SumTerm)) return new SumTerm(s);
+  var r=Term.call(this,s);
+  if (s&&!(r instanceof SumTerm)) throw Error("Invalid expression: "+s);
+  if (s) return r;
+}
+Object.assign(SumTerm,Term);
+SumTerm.build=function (terms){
+  var r=SumTerm();
+  r.terms=[];
+  for (var i=0;i<terms.length;i++){
+    if (terms[i] instanceof SumTerm){
+      r.terms=r.terms.concat(Term(terms[i]).terms);
+    }else{
+      r.terms.push(Term(terms[i]));
     }
   }
-  return s;
+  return r;
 }
+SumTerm.prototype=Object.create(Term.prototype);
+SumTerm.prototype.clone=function (){
+  return SumTerm.build(this.terms);
+}
+SumTerm.prototype.toString=function (abbreviate){
+  if (abbreviate){
+      var strterms=this.terms.map(function (t){return t.toString(abbreviate);});
+      for (var i=0;i<strterms.length;i++){
+        if (strterms[i]=="1"){
+          for (var j=i;j<strterms.length&&strterms[j]=="1";j++);
+          strterms.splice(i,j-i,(j-i)+"");
+        }
+      }
+      return strterms.join("+");
+  }else{
+    return this.terms.join("+");
+  }
+}
+SumTerm.prototype.toStringWithImplicitBrace=function (abbreviate){
+  if (abbreviate&&this.terms.every(function (t){return t instanceof OneTerm})) return this.toString(abbreviate);
+  else return "{"+this.toString(abbreviate)+"}";
+}
+SumTerm.prototype.equal=function (other){
+  if (!(other instanceof Term)) other=Term(other);
+  return other instanceof SumTerm&&this.terms.length==other.terms.length&&this.terms.every(function (e,i){return Term(e).equal(other.terms[i]);});
+}
+SumTerm.prototype.getLeft=function (){
+  return Term(this.terms[0]);
+}
+SumTerm.prototype.getNotLeft=function (){
+  if (this.terms.length<=2) return Term(this.terms[1]);
+  else return SumTerm.build(this.terms.slice(1));
+}
+SumTerm.prototype.getRight=function (){
+  return Term(this.terms[this.terms.length-1]);
+}
+SumTerm.prototype.getNotRight=function (){
+  if (this.terms.length<=2) return Term(this.terms[0]);
+  else return SumTerm.build(this.terms.slice(0,-1));
+}
+SumTerm.prototype.slice=function (start,end){
+  if (start<0) start=this.terms.length+start;
+  if (end===undefined) end=this.terms.length;
+  if (end<0) end=this.terms.length+end;
+  if (start>=end) return NullTerm.build();
+  else if (end-start==1) return Term(this.terms[start]);
+  else return SumTerm.build(this.terms.slice(start,end));
+}
+Object.defineProperty(SumTerm.prototype,"constructor",{
+  value:SumTerm,
+  enumerable:false,
+  writable:true
+});
+
 function removeBrace(s){
   return s.startsWith("{")&&s.endsWith("}")?s.slice(1,-1):s;
 }
@@ -235,33 +532,41 @@ function decomposeArray(t,f,s){
 function decomposeArrayIfLong(t,f,s){
   return t.indexOf(s)!=-1&&decomposeArray(t,f,s);
 }
+function isSumAndTermsSatisfy(t,f){
+  return t instanceof SumTerm&&t.terms.every(f)&&t.terms;
+}
 function isNat(t){
-  t=normalizeAbbreviations(t);
-  return /^1(\+1)*$/.test(t);
+  t=Term(t);
+  return t instanceof OneTerm||(t instanceof SumTerm&&t.terms.every(function(t){return t instanceof OneTerm;}));
 }
 function inT(t){
-  if (!isMatchingParens(t)) return false; //basic property
-  t=normalizeAbbreviations(t);
-  if (t=="0") return true; //rule 1
-  if (t=="1") return true; //rule 1
-  if (t=="E(ε(0)×(1))") return true; //rule 2
-  if (t.endsWith("+E(ε(0)×(1))")&&inAT(t.slice(0,-12))) return true; //rule 3
-  if (format["E(ε(0)×(*))"](t,function(t){return t!="0"&&t!="1"&&inT(t);})) return true; //rule 4
+  try{
+    t=Term(t);
+  }catch(e){
+    return false;
+  }
+  if (equal(t,"0")) return true; //rule 1
+  if (equal(t,"1")) return true; //rule 1
+  if (equal(t,"E(ε(0)×(1))")) return true; //rule 2
+  if (t instanceof SumTerm&&equal(t.getRight(),"E(ε(0)×(1))")&&inAT(t.getNotRight())) return true; //rule 3
+  if (format["E(ε(0)×(*))"](t,inTnot01)) return true; //rule 4
   if (format["E(ε(0)×(*)+*)"](t,inTnot0,inRT)) return true; //rule 5
   if (format["EE_*(*)"](t,inAAT,inT)) return true; //rule 6
   if (format["EE_{E(ε(0)×(*)+*)}(*)"](t,inTnot0,inRT,inT)) return true; //rule 7
   if (format["E(*)"](t,inRT)) return true; //rule 12
   if (format["EE_{E(*)}(*)"](t,inRT,inT)) return true; //rule 13
-  var t1=decomposeArrayIfLong(t,inPT,"+");
-  if (t1&&t1.length>=2) return true; //rule 14
+  if (isSumAndTermsSatisfy(t,inPT)) return true; //rule 14
   return false;
 }
 function inPT(t){
-  if (!isMatchingParens(t)) return false; //basic property
-  t=normalizeAbbreviations(t);
-  if (t=="1") return true; //rule 1
-  if (t=="E(ε(0)×(1))") return true; //rule 2
-  if (format["E(ε(0)×(*))"](t,function(t){return t!="0"&&t!="1"&&inT(t);})) return true; //rule 4
+  try{
+    t=Term(t);
+  }catch(e){
+    return false;
+  }
+  if (equal(t,"1")) return true; //rule 1
+  if (equal(t,"E(ε(0)×(1))")) return true; //rule 2
+  if (format["E(ε(0)×(*))"](t,inTnot01)) return true; //rule 4
   if (format["E(ε(0)×(*)+*)"](t,inTnot0,inRT)) return true; //rule 5
   if (format["EE_*(*)"](t,inAAT,inT)) return true; //rule 6
   if (format["EE_{E(ε(0)×(*)+*)}(*)"](t,inTnot0,inRT,inT)) return true; //rule 7
@@ -270,127 +575,149 @@ function inPT(t){
   return false;
 }
 function inAT(t){
-  if (!isMatchingParens(t)) return false; //basic property
-  t=normalizeAbbreviations(t);
-  if (t=="E(ε(0)×(1))") return true; //rule 2
-  if (t.endsWith("+E(ε(0)×(1))")&&inAT(t.slice(0,-12))) return true; //rule 3
-  if (format["E(ε(0)×(*))"](t,function(t){return t!="0"&&t!="1"&&inT(t);})) return true; //rule 4
+  try{
+    t=Term(t);
+  }catch(e){
+    return false;
+  }
+  if (equal(t,"E(ε(0)×(1))")) return true; //rule 2
+  if (t instanceof SumTerm&&equal(t.getRight(),"E(ε(0)×(1))")&&inAT(t.getNotRight())) return true; //rule 3
+  if (format["E(ε(0)×(*))"](t,inTnot01)) return true; //rule 4
   if (format["E(ε(0)×(*)+*)"](t,inTnot0,inRT)) return true; //rule 5
   if (format["EE_{E(ε(0)×(*)+*)}(*)"](t,inTnot0,inRT,inT)) return true; //rule 7
-  var t1=decomposeArrayIfLong(t,inPAT,"+");
-  if (t1&&t1.length>=2) return true; //rule 8
+  if (isSumAndTermsSatisfy(t,inPAT)) return true; //rule 8
   return false;
 }
 function inAAT(t){
-  if (!isMatchingParens(t)) return false; //basic property
-  t=normalizeAbbreviations(t);
-  if (t=="E(ε(0)×(1))") return true; //rule 2
-  if (t.endsWith("+E(ε(0)×(1))")&&inAT(t.slice(0,-12))) return true; //rule 3
+  try{
+    t=Term(t);
+  }catch(e){
+    return false;
+  }
+  if (equal(t,"E(ε(0)×(1))")) return true; //rule 2
+  if (t instanceof SumTerm&&equal(t.getRight(),"E(ε(0)×(1))")&&inAT(t.getNotRight())) return true; //rule 3
   return false;
 }
 function inRT(t){
-  if (!isMatchingParens(t)) return false; //basic property
-  t=normalizeAbbreviations(t);
+  try{
+    t=Term(t);
+  }catch(e){
+    return false;
+  }
   if (format["*×(*)"](t,inPRT,inTnot0)) return true; //rule 10
-  var t1=decomposeArrayIfLong(t,format["*×(*)"](inPRT,inTnot0),"+");
-  if (t1&&t1.length>=2) return true; //rule 11
+  if (isSumAndTermsSatisfy(t,format["*×(*)"](inPRT,inTnot0))) return true; //rule 11
   return false;
 }
 function inPRT(t){
-  if (!isMatchingParens(t)) return false; //basic property
-  t=normalizeAbbreviations(t);
+  try{
+    t=Term(t);
+  }catch(e){
+    return false;
+  }
   if (format["ε([*])"](t,inAT)) return true; //rule 9
   return false;
 }
 function inRPT(t){
-  if (!isMatchingParens(t)) return false; //basic property
-  t=normalizeAbbreviations(t);
+  try{
+    t=Term(t);
+  }catch(e){
+    return false;
+  }
   if (format["*×(*)"](t,inPRT,inTnot0)) return true; //rule 10
   return false;
 }
 function inPAT(t){
-  if (!isMatchingParens(t)) return false; //basic property
-  t=normalizeAbbreviations(t);
+  try{
+    t=Term(t);
+  }catch(e){
+    return false;
+  }
   return inPT(t)&&inAT(t);
 }
 function inTnot0(t){
-  if (!isMatchingParens(t)) return false; //basic property
-  t=normalizeAbbreviations(t);
-  return t!="0"&&inT(t);
+  try{
+    t=Term(t);
+  }catch(e){
+    return false;
+  }
+  return !equal(t,"0")&&inT(t);
+}
+function inTnot01(t){
+  try{
+    t=Term(t);
+  }catch(e){
+    return false;
+  }
+  return !equal(t,"0")&&!equal(t,"1")&&inT(t);
 }
 var format={};
 format["E(*)"]=function (t,f){
   if (t instanceof Function) return function(s){return format["E(*)"](s,t);};
-  t=normalizeAbbreviations(t);
-  var X;
-  return t.startsWith("E(")&&t.endsWith(")")&&f(X=t.slice(2,-1))?X:false;
+  t=Term(t);
+  return t instanceof CapitalEpsilonTerm&&f(t.inner)&&t.inner;
 };
 format["ε(0)×(*)"]=function (t,f){
   if (t instanceof Function) return function(s){return format["ε(0)×(*)"](s,t);};
-  t=normalizeAbbreviations(t);
-  var X;
-  return t.startsWith("ε(0)×(")&&t.endsWith(")")&&f(X=t.slice(6,-1))?X:false;
+  t=Term(t);
+  return t instanceof ProductTerm&&t.left instanceof SmallEpsilonTerm&&t.left.inner instanceof ZeroTerm&&f(t.right)&&t.right;
 };
 format["E(ε(0)×(*))"]=function (t,f){
   if (t instanceof Function) return function(s){return format["E(ε(0)×(*))"](s,t);};
-  t=normalizeAbbreviations(t);
-  var X;
-  return t.startsWith("E(ε(0)×(")&&t.endsWith("))")&&f(X=t.slice(8,-2))?X:false;
+  t=Term(t);
+  return t instanceof CapitalEpsilonTerm&&format["ε(0)×(*)"](t.inner,f);
 };
 format["E(ε(0)×(*)+*)"]=function (t,f,g){
   if (t instanceof Function) return function(s){return format["E(ε(0)×(*)+*)"](s,t,f);};
-  t=normalizeAbbreviations(t);
-  var t1;
-  if (t.startsWith("E(ε(0)×(")&&t.endsWith(")")&&(t1=splitPairs(t.slice(8,-1),")+").find(isPairOfGen(f,g)))) return t1;
-  return false;
+  t=Term(t);
+  if (t instanceof CapitalEpsilonTerm&&t.inner instanceof SumTerm){
+    var left=t.inner.getLeft();
+    var notleft=t.inner.getNotLeft();
+    var t1=format["ε(0)×(*)"](left,f);
+    return t1&&g(notleft)&&[t1,notleft];
+  }else return false;
 };
 format["EE_*(*)"]=function (t,f,g){
   if (t instanceof Function) return function(s){return format["EE_*(*)"](s,t,f);};
-  t=normalizeAbbreviations(t);
-  var t1;
-  if (t.startsWith("EE_")&&t.endsWith(")")&&(t1=splitPairs(t.slice(3,-1),"(").find(isPairOfGen(function(t){return f(removeBrace(t));},g)))) return [removeBrace(t1[0]),t1[1]];
-  return false;
+  t=Term(t);
+  return t instanceof DoubleCapitalEpsilonTerm&&f(t.sub)&&g(t.inner)&&[t.sub,t.inner];
 };
 format["EE_{E(ε(0)×(*)+*)}(*)"]=function (t,f,g,h){
   if (t instanceof Function) return function(s){return format["EE_{E(ε(0)×(*)+*)}(*)"](s,t,f,g);};
-  t=normalizeAbbreviations(t);
-  var t1=format["EE_*(*)"](t,format["E(ε(0)×(*)+*)"](f,g),h);
-  if (t1){
-    var t2=format["E(ε(0)×(*)+*)"](t1[0],f,g);
-    if (t2) return [t2[0],t2[1],t1[1]];
-  }
-  return false;
+  t=Term(t);
+  var t1;
+  return t instanceof DoubleCapitalEpsilonTerm&&(t1=format["E(ε(0)×(*)+*)"](t.sub,f,g))&&h(t.inner)&&[t1[0],t1[1],t.inner];
 };
 format["EE_{E(*)}(*)"]=function (t,f,g){
   if (t instanceof Function) return function(s){return format["EE_{E(*)}(*)"](s,t,f);};
-  t=normalizeAbbreviations(t);
-  var t1=format["EE_*(*)"](t,format["E(*)"](f),g);
-  if (t1) return [format["E(*)"](t1[0],f),t1[1]];
-  return false;
+  t=Term(t);
+  var t1;
+  return t instanceof DoubleCapitalEpsilonTerm&&(t1=format["E(*)"](t.sub,f))&&g(t.inner)&&[t1,t.inner];
 };
 format["ε([*])"]=function (t,f){
   if (t instanceof Function) return function(s){return format["ε([*])"](s,t);};
-  t=normalizeAbbreviations(t);
-  var X;
-  return t.startsWith("ε([")&&t.endsWith("])")&&f(X=t.slice(3,-2))?X:false;
+  t=Term(t);
+  return t instanceof SmallEpsilonBracketTerm&&f(t.inner)&&t.inner;
 };
 format["ε([*])×(*)"]=function (t,f,g){
   if (t instanceof Function) return function(s){return format["ε([*])×(*)"](s,t,f);};
-  t=normalizeAbbreviations(t);
-  var X;
-  return t.startsWith("ε([")&&t.endsWith(")")&&(X=splitPairs(t.slice(3,-1),"])×(").find(isPairOfGen(f,g)))?X:false;
+  t=Term(t);
+  return t instanceof ProductTerm&&t.left instanceof SmallEpsilonBracketTerm&&f(t.left.inner)&&g(t.right)&&[t.left.inner,t.right];
 };
 format["*+*"]=function (t,f,g){
   if (t instanceof Function) return function(s){return format["*+*"](s,t,f);};
-  t=normalizeAbbreviations(t);
-  var X;
-  return (X=splitPairs(t,"+").find(isPairOfGen(f,g)))?X:false;
+  t=Term(t);
+  if (t instanceof SumTerm){
+    for (var i=1;i<t.terms.length;i++){
+      var left=t.slice(0,i);
+      var right=t.slice(i);
+      if (f(left)&&g(right)) return [left,right];
+    }
+  }else return false;
 };
 format["*×(*)"]=function (t,f,g){
   if (t instanceof Function) return function(s){return format["*×(*)"](s,t,f);};
-  t=normalizeAbbreviations(t);
-  var X;
-  return t.endsWith(")")&&(X=splitPairs(t.slice(0,-1),"×(").find(isPairOfGen(f,g)))?X:false;
+  t=Term(t);
+  return t instanceof ProductTerm&&f(t.left)&&g(t.right)&&[t.left,t.right];
 };
 format.nest=function (t,f,...p){
   if (t instanceof Function) return function(s){return format.nest(s,t,f,...p);};
@@ -408,17 +735,17 @@ format.nest=function (t,f,...p){
 };
 function equal(X,Y){
   if (arguments.length==1) return function(t){return equal(t,X);};
-  X=normalizeAbbreviations(X);
-  Y=normalizeAbbreviations(Y);
-  return X.replaceAll(/[\{\}]/g,"")==Y.replaceAll(/[\{\}]/g,"");
+  X=Term(X);
+  Y=Term(Y);
+  return X.equal(Y);
 }
 function notEqual(X,Y){
   if (arguments.length==1) return function(t){return notEqual(t,X);};
   return !equal(X,Y);
 }
 function lessThan(X,Y){
-  X=normalizeAbbreviations(X);
-  Y=normalizeAbbreviations(Y);
+  X=Term(X);
+  Y=Term(Y);
   var argsInRT=inRT(X)&&inRT(Y);
   if (argsInRT){ //1
     if (equal(X,"ε([A])×(1)")) return !equal(X,Y); //1-1
@@ -431,19 +758,19 @@ function lessThan(X,Y){
         if (equal(X1,Y1)) return lessThan(Z,Zp); //1-2-1-1
         if (!equal(X1,Y1)) return lessThan(X1,Y1); //1-2-1-2
       }
-      var YZs=decomposeArrayIfLong(Y,format["ε([*])×(*)"](inAT,inTnot0),"+");
-      if (YZs&&YZs.length>=2){ //1-2-2
+      var YZs=isSumAndTermsSatisfy(Y,format["ε([*])×(*)"](inAT,inTnot0));
+      if (YZs){ //1-2-2
         var [Y1,Z1]=format["ε([*])×(*)"](YZs[0],inAT,inTnot0);
         if (equal(X1,Y1)) return lessThanOrEqual(Z,Z1); //1-2-2-1
         if (!equal(X1,Y1)) return lessThan(X1,Y1); //1-2-1-2
       }
     }
-    var Xs=decomposeArrayIfLong(X,inRPT,"+");
-    if (Xs&&Xs.length>=2){ //1-3
+    var Xs=isSumAndTermsSatisfy(X,inRPT);
+    if (Xs){ //1-3
       var m=Xs.length;
       var X1=Xs[0];
-      var Ys=decomposeArrayIfLong(Y,inRPT,"+");
-      if (Ys&&Ys.length>=2){ //1-3-1
+      var Ys=isSumAndTermsSatisfy(Y,inRPT);
+      if (Ys){ //1-3-1
         var mp=Ys.length;
         var Y1=Ys[0];
         if (equal(X1,Y1)){ //1-3-1-1
@@ -522,12 +849,12 @@ function lessThan(X,Y){
             return lessThanOrEqual(Z2,Y);
           }
           var t3=format.nest(R,format["*+*"],inRT,format["ε([*])×(*)"](inAT,inTnot0));
-          if (t3&&equal(Rp,t3[0]+"ε(["+t3[1]+"+A])×(1)")){ //2-4-3-1-7
+          if (t3&&equal(Rp,t3[0]+"+ε(["+t3[1]+"+A])×(1)")){ //2-4-3-1-7
             var [R1,X1,Z1]=t3;
             return lessThan(Z1,Y);
           }
           var t3=format.nest(R,format["*+*"],inRT,format.nest(format["*+*"],format["ε([*])×(*)"](inAT,inTnot0),inRT));
-          if (t3&&equal(Rp,t3[0]+"ε(["+t3[1]+"+A])×(1)")){ //2-4-3-1-8
+          if (t3&&equal(Rp,t3[0]+"+ε(["+t3[1]+"+A])×(1)")){ //2-4-3-1-8
             var [R1,X1,Z1,R2]=t3;
             return lessThanOrEqual(Z1,Y);
           }
@@ -599,12 +926,12 @@ function lessThan(X,Y){
             return lessThanOrEqual(Z2,Y);
           }
           var t3=format.nest(R,format["*+*"],inRT,format["ε([*])×(*)"](inAT,inTnot0));
-          if (t3&&equal(Rp,t3[0]+"ε(["+t3[1]+"+A])×(1)")){ //2-6-1-2-7
+          if (t3&&equal(Rp,t3[0]+"+ε(["+t3[1]+"+A])×(1)")){ //2-6-1-2-7
             var [R1,X1,Z1]=t3;
             return lessThan(Z1,Y);
           }
           var t3=format.nest(R,format["*+*"],inRT,format.nest(format["*+*"],format["ε([*])×(*)"](inAT,inTnot0),inRT));
-          if (t3&&equal(Rp,t3[0]+"ε(["+t3[1]+"+A])×(1)")){ //2-6-1-2-8
+          if (t3&&equal(Rp,t3[0]+"+ε(["+t3[1]+"+A])×(1)")){ //2-6-1-2-8
             var [R1,X1,Z1,R2]=t3;
             return lessThanOrEqual(Z1,Y);
           }
@@ -639,12 +966,12 @@ function lessThan(X,Y){
             return lessThanOrEqual(X,Z2);
           }
           var t3=format.nest(Rp,format["*+*"],inRT,format["ε([*])×(*)"](inAT,inTnot0));
-          if (t3&&equal(R,t3[0]+"ε(["+t3[1]+"+A])×(1)")){ //2-6-1-2-15
+          if (t3&&equal(R,t3[0]+"+ε(["+t3[1]+"+A])×(1)")){ //2-6-1-2-15
             var [R1,X1,Z1]=t3;
             return lessThan(X,Z1);
           }
           var t3=format.nest(Rp,format["*+*"],inRT,format.nest(format["*+*"],format["ε([*])×(*)"](inAT,inTnot0),inRT));
-          if (t3&&equal(R,t3[0]+"ε(["+t3[1]+"+A])×(1)")){ //2-6-1-2-16
+          if (t3&&equal(R,t3[0]+"+ε(["+t3[1]+"+A])×(1)")){ //2-6-1-2-16
             var [R1,X1,Z1,R2]=t3;
             return lessThanOrEqual(X,Z1);
           }
@@ -694,12 +1021,12 @@ function lessThan(X,Y){
           return lessThanOrEqual(Z2,Y);
         }
         var t3=format.nest(R,format["*+*"],inRT,format["ε([*])×(*)"](inAT,inTnot0));
-        if (t3&&equal(Rp,t3[0]+"ε(["+t3[1]+"+A])×(1)")){ //2-7-2-7
+        if (t3&&equal(Rp,t3[0]+"+ε(["+t3[1]+"+A])×(1)")){ //2-7-2-7
           var [R1,X1,Z1]=t3;
           return lessThan(Z1,Y);
         }
         var t3=format.nest(R,format["*+*"],inRT,format.nest(format["*+*"],format["ε([*])×(*)"](inAT,inTnot0),inRT));
-        if (t3&&equal(Rp,t3[0]+"ε(["+t3[1]+"+A])×(1)")){ //2-7-2-8
+        if (t3&&equal(Rp,t3[0]+"+ε(["+t3[1]+"+A])×(1)")){ //2-7-2-8
           var [R1,X1,Z1,R2]=t3;
           return lessThanOrEqual(Z1,Y);
         }
@@ -746,12 +1073,12 @@ function lessThan(X,Y){
             return lessThanOrEqual(Z2,Y);
           }
           var t3=format.nest(R,format["*+*"],inRT,format["ε([*])×(*)"](inAT,inTnot0));
-          if (t3&&equal(Rp,t3[0]+"ε(["+t3[1]+"+A])×(1)")){ //2-8-1-2-7
+          if (t3&&equal(Rp,t3[0]+"+ε(["+t3[1]+"+A])×(1)")){ //2-8-1-2-7
             var [R1,X1,Z1]=t3;
             return lessThan(Z1,Y);
           }
           var t3=format.nest(R,format["*+*"],inRT,format.nest(format["*+*"],format["ε([*])×(*)"](inAT,inTnot0),inRT));
-          if (t3&&equal(Rp,t3[0]+"ε(["+t3[1]+"+A])×(1)")){ //2-8-1-2-8
+          if (t3&&equal(Rp,t3[0]+"+ε(["+t3[1]+"+A])×(1)")){ //2-8-1-2-8
             var [R1,X1,Z1,R2]=t3;
             return lessThanOrEqual(Z1,Y);
           }
@@ -786,12 +1113,12 @@ function lessThan(X,Y){
             return lessThanOrEqual(X,Z2);
           }
           var t3=format.nest(Rp,format["*+*"],inRT,format["ε([*])×(*)"](inAT,inTnot0));
-          if (t3&&equal(R,t3[0]+"ε(["+t3[1]+"+A])×(1)")){ //2-8-1-2-15
+          if (t3&&equal(R,t3[0]+"+ε(["+t3[1]+"+A])×(1)")){ //2-8-1-2-15
             var [R1,X1,Z1]=t3;
             return lessThan(X,Z1);
           }
           var t3=format.nest(Rp,format["*+*"],inRT,format.nest(format["*+*"],format["ε([*])×(*)"](inAT,inTnot0),inRT));
-          if (t3&&equal(R,t3[0]+"ε(["+t3[1]+"+A])×(1)")){ //2-8-1-2-16
+          if (t3&&equal(R,t3[0]+"+ε(["+t3[1]+"+A])×(1)")){ //2-8-1-2-16
             var [R1,X1,Z1,R2]=t3;
             return lessThanOrEqual(X,Z1);
           }
@@ -800,14 +1127,14 @@ function lessThan(X,Y){
       }
       else return !lessThanOrEqual(Y,X); //2-8-2
     }
-    var Xs=decomposeArrayIfLong(X,inPT,"+");
-    if (Xs&&Xs.length>=2){ //2-9
+    var Xs=isSumAndTermsSatisfy(X,inPT);
+    if (Xs){ //2-9
       var m=Xs.length;
       var X1=Xs[0];
       if (equal(Y,"0")) return false; //2-9-1
       if (inPT(Y)) return lessThan(X1,Y); //2-9-2
-      var Ys=decomposeArrayIfLong(Y,inPT,"+");
-      if (Ys&&Ys.length>=2){ //2-9-3
+      var Ys=isSumAndTermsSatisfy(Y,inPT);
+      if (Ys){ //2-9-3
         var mp=Ys.length;
         var Y1=Ys[0];
         if (equal(X1,Y1)){ //2-9-3-1
@@ -824,26 +1151,26 @@ function lessThan(X,Y){
   throw Error("No rule to compare "+X+" and "+Y);
 }
 function lessThanOrEqual(X,Y){
-  X=normalizeAbbreviations(X);
-  Y=normalizeAbbreviations(Y);
+  X=Term(X);
+  Y=Term(Y);
   return equal(X,Y)||lessThan(X,Y);
 }
 function dom(X){
-  X=normalizeAbbreviations(X);
+  X=Term(X);
   if (!inT(X)) throw Error("Invalid argument: "+X);
   var Y=null;
-  if (X=="0") return "0"; //1
-  if (X=="1") return "1"; //2
+  if (equal(X,"0")) return "0"; //1
+  if (equal(X,"1")) return "1"; //2
   var t1=format["EE_*(*)"](X,inAAT,inT);
   if (t1){ //3
     var [X1,X2]=t1;
     if (equal(X1,"A")){ //3-1
-      if (dom(X2)=="0"){ //3-1-1
+      if (equal(dom(X2),"0")){ //3-1-1
         return normalizeAbbreviations("ω");
         if (isNat(Y)); //3-1-1-1
         else; //3-1-1-2
       }
-      if (dom(X2)=="1"){ //3-1-2
+      if (equal(dom(X2),"1")){ //3-1-2
         return normalizeAbbreviations("ω");
         if (isNat(Y)); //3-1-2-1
         else; //3-1-2-2
@@ -907,12 +1234,12 @@ function dom(X){
     var t2=format["*+*"](X1,inAT,equal("A"));
     if (t2){ //3-2
       var [Xp1,_A]=t2;
-      if (dom(X2)=="0"){ //3-2-1
+      if (equal(dom(X2),"0")){ //3-2-1
         return normalizeAbbreviations("ω");
         if (isNat(Y)); //3-2-1-1
         else; //3-2-1-2
       }
-      if (dom(X2)=="1"){ //3-2-2
+      if (equal(dom(X2),"1")){ //3-2-2
         return normalizeAbbreviations("ω");
         if (isNat(Y)); //3-2-2-1
         else; //3-2-2-2
@@ -977,7 +1304,7 @@ function dom(X){
   var t1=format["EE_{E(ε(0)×(*)+*)}(*)"](X,inTnot0,inRT,inT);
   if (t1){ //4
     var [Z,R,X2]=t1;
-    if (dom(X2)=="0"){ //4-1
+    if (equal(dom(X2),"0")){ //4-1
       return normalizeAbbreviations("ω");
       if (equal(R,"ε([A])×(1)")){ //4-1-1
         if (isNat(Y)); //4-1-1-1
@@ -1061,8 +1388,8 @@ function dom(X){
         if (equal(dom(Xp),"ω")); //4-1-9-1
         var Zp=format["E(ε(0)×(*))"](dom(Xp),inTnot0);
         if (Zp){ //4-1-9-2
-          if (Z1=="1"){ //4-1-9-2-1
-            if (Zp=="1"){ //4-1-9-2-1-1
+          if (equal(Z1,"1")){ //4-1-9-2-1
+            if (equal(Zp,"1")){ //4-1-9-2-1-1
               var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(ε(0)×(*)+*)"],equal(Z),format["ε([*])×(*)"](inAT,equal("1")));
               if (t3){ //4-1-9-2-1-1-1
                 var [_Z,G,_1]=t3;
@@ -1078,7 +1405,7 @@ function dom(X){
             }
           }
           else{ //4-1-9-2-2
-            if (Zp=="1"){ //4-1-9-2-2-1
+            if (equal(Zp,"1")){ //4-1-9-2-2-1
               var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(ε(0)×(*)+*)"],equal(Z),format.nest(format["*+*"],equal("ε(["+Xp+"])×("+fund(Z1,"0")+")"),format["ε([*])×(*)"](inAT,equal("1"))));
               if (t3){ //4-1-9-2-2-1-1
                 var [_Z,_C,G,_1]=t3;
@@ -1097,7 +1424,7 @@ function dom(X){
         var t3=format["E(ε(0)×(*)+*)"](dom(Xp),inTnot0,inRT);
         if (t3){ //4-1-9-3
           var [Zp,Rp]=t3;
-          if (Z1=="1"){ //4-1-9-3-1
+          if (equal(Z1,"1")){ //4-1-9-3-1
             var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(ε(0)×(*)+*)"],equal(Z),format["ε([*])×(*)"](inAT,equal("1")));
             if (t3){ //4-1-9-3-1-1
               var [_Z,G,_1]=t3;
@@ -1114,7 +1441,7 @@ function dom(X){
         }
         var Rp=format["E(*)"](dom(Xp),inRT);
         if (Rp){ //4-1-9-4
-          if (Z1=="1"){ //4-1-9-4-1
+          if (equal(Z1,"1")){ //4-1-9-4-1
             var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(ε(0)×(*)+*)"],equal(Z),format["ε([*])×(*)"](inAT,equal("1")));
             if (t3){ //4-1-9-4-1-1
               var [_Z,G,_1]=t3;
@@ -1136,8 +1463,8 @@ function dom(X){
         if (equal(dom(Xp),"ω")); //4-1-10-1
         var Zp=format["E(ε(0)×(*))"](dom(Xp),inTnot0);
         if (Zp){ //4-1-10-2
-          if (Z1=="1"){ //4-1-10-2-1
-            if (Zp=="1"){ //4-1-10-2-1-1
+          if (equal(Z1,"1")){ //4-1-10-2-1
+            if (equal(Zp,"1")){ //4-1-10-2-1-1
               var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(ε(0)×(*)+*)"],equal(Z),format.nest(format["*+*"],equal(R1),format["ε([*])×(*)"](inAT,equal("1"))));
               if (t3){ //4-1-10-2-1-1-1
                 var [_Z,_R1,G,_1]=t3;
@@ -1153,7 +1480,7 @@ function dom(X){
             }
           }
           else{ //4-1-10-2-2
-            if (Zp=="1"){ //4-1-10-2-2-1
+            if (equal(Zp,"1")){ //4-1-10-2-2-1
               var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(ε(0)×(*)+*)"],equal(Z),format.nest(format["*+*"],equal(R1),format.nest(format["*+*"],equal("ε(["+Xp+"])×("+fund(Z1,"0")+")"),format["ε([*])×(*)"](inAT,equal("1")))));
               if (t3){ //4-1-10-2-2-1-1
                 var [_Z,_R1,_C,G,_1]=t3;
@@ -1172,7 +1499,7 @@ function dom(X){
         var t3=format["E(ε(0)×(*)+*)"](dom(Xp),inTnot0,inRT);
         if (t3){ //4-1-10-3
           var [Zp,Rp]=t3;
-          if (Z1=="1"){ //4-1-10-3-1
+          if (equal(Z1,"1")){ //4-1-10-3-1
             var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(ε(0)×(*)+*)"],equal(Z),format.nest(format["*+*"],equal(R1),format["ε([*])×(*)"](inAT,equal("1"))));
             if (t3){ //4-1-10-3-1-1
               var [_Z,_R1,G,_1]=t3;
@@ -1189,7 +1516,7 @@ function dom(X){
         }
         var Rp=format["E(*)"](dom(Xp),inRT);
         if (Rp){ //4-1-10-4
-          if (Z1=="1"){ //4-1-10-4-1
+          if (equal(Z1,"1")){ //4-1-10-4-1
             var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(ε(0)×(*)+*)"],equal(Z),format.nest(format["*+*"],equal(R1),format["ε([*])×(*)"](inAT,equal("1"))));
             if (t3){ //4-1-10-4-1-1
               var [_Z,_R1,G,_1]=t3;
@@ -1206,7 +1533,7 @@ function dom(X){
         }
       }
     }
-    if (dom(X2)=="1"){ //4-2
+    if (equal(dom(X2),"1")){ //4-2
       return normalizeAbbreviations("ω");
       if (equal(R,"ε([A])×(1)")){ //4-2-1
         if (isNat(Y)); //4-2-1-1
@@ -1287,7 +1614,7 @@ function dom(X){
   var t1=format["EE_{E(*)}(*)"](X,inRT,inT);
   if (t1){ //5
     var [R,X2]=t1;
-    if (dom(X2)=="0"){ //5-1
+    if (equal(dom(X2),"0")){ //5-1
       return normalizeAbbreviations("ω");
       if (equal(R,"ε([A])×(1)")){ //5-1-1
         if (isNat(Y)); //5-1-1-1
@@ -1377,8 +1704,8 @@ function dom(X){
         if (equal(dom(Xp),"ω")); //5-1-9-1
         var Zp=format["E(ε(0)×(*))"](dom(Xp),inTnot0);
         if (Zp){ //5-1-9-2
-          if (Z1=="1"){ //5-1-9-2-1
-            if (Zp=="1"){ //5-1-9-2-1-1
+          if (equal(Z1,"1")){ //5-1-9-2-1
+            if (equal(Zp,"1")){ //5-1-9-2-1-1
               var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(*)"],format["ε([*])×(*)"](inAT,equal("1")));
               if (t3){ //5-1-9-2-1-1-1
                 var [G,_1]=t3;
@@ -1394,7 +1721,7 @@ function dom(X){
             }
           }
           else{ //5-1-9-2-2
-            if (Zp=="1"){ //5-1-9-2-2-1
+            if (equal(Zp,"1")){ //5-1-9-2-2-1
               var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(*)"],format.nest(format["*+*"],equal("ε(["+Xp+"])×("+fund(Z1,"0")+")"),format["ε([*])×(*)"](inAT,equal("1"))));
               if (t3){ //5-1-9-2-2-1-1
                 var [_C,G,_1]=t3;
@@ -1413,7 +1740,7 @@ function dom(X){
         var t3=format["E(ε(0)×(*)+*)"](dom(Xp),inTnot0,inRT);
         if (t3){ //5-1-9-3
           var [Zp,Rp]=t3;
-          if (Z1=="1"){ //5-1-9-3-1
+          if (equal(Z1,"1")){ //5-1-9-3-1
             var t4=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(*)"],format["ε([*])×(*)"](inAT,equal("1")));
             if (t4){ //5-1-9-3-1-1
               var [G,_1]=t4;
@@ -1430,7 +1757,7 @@ function dom(X){
         }
         var Rp=format["E(*)"](dom(Xp),inRT);
         if (Rp){ //5-1-9-4
-          if (Z1=="1"){ //5-1-9-4-1
+          if (equal(Z1,"1")){ //5-1-9-4-1
             var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(*)"],format["ε([*])×(*)"](inAT,equal("1")));
             if (t3){ //5-1-9-4-1-1
               var [G,_1]=t3;
@@ -1452,8 +1779,8 @@ function dom(X){
         if (equal(dom(Xp),"ω")); //5-1-10-1
         var Zp=format["E(ε(0)×(*))"](dom(Xp),inTnot0);
         if (Zp){ //5-1-10-2
-          if (Z1=="1"){ //5-1-10-2-1
-            if (Zp=="1"){ //5-1-10-2-1-1
+          if (equal(Z1,"1")){ //5-1-10-2-1
+            if (equal(Zp,"1")){ //5-1-10-2-1-1
               var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(*)"],format.nest(format["*+*"],equal(R1),format["ε([*])×(*)"](inAT,equal("1"))));
               if (t3){ //5-1-10-2-1-1-1
                 var [G,_1]=t3;
@@ -1469,7 +1796,7 @@ function dom(X){
             }
           }
           else{ //5-1-10-2-2
-            if (Zp=="1"){ //5-1-10-2-2-1
+            if (equal(Zp,"1")){ //5-1-10-2-2-1
               var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(*)"],format.nest(format["*+*"],equal(R1),format.nest(format["*+*"],equal("ε(["+Xp+"])×("+fund(Z1,"0")+")"),format["ε([*])×(*)"](inAT,equal("1")))));
               if (t3){ //5-1-10-2-2-1-1
                 var [_C,G,_1]=t3;
@@ -1488,7 +1815,7 @@ function dom(X){
         var t3=format["E(ε(0)×(*)+*)"](dom(Xp),inTnot0,inRT);
         if (t3){ //5-1-10-3
           var [Zp,Rp]=t3;
-          if (Z1=="1"){ //5-1-10-3-1
+          if (equal(Z1,"1")){ //5-1-10-3-1
             var t4=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(*)"],format.nest(format["*+*"],equal(R1),format["ε([*])×(*)"](inAT,equal("1"))));
             if (t4){ //5-1-10-3-1-1
               var [G,_1]=t4;
@@ -1505,7 +1832,7 @@ function dom(X){
         }
         var Rp=format["E(*)"](dom(Xp),inRT);
         if (Rp){ //5-1-10-4
-          if (Z1=="1"){ //5-1-10-4-1
+          if (equal(Z1,"1")){ //5-1-10-4-1
             var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(*)"],format.nest(format["*+*"],equal(R1),format["ε([*])×(*)"](inAT,equal("1"))));
             if (t3){ //5-1-10-4-1-1
               var [G,_1]=t3;
@@ -1522,7 +1849,7 @@ function dom(X){
         }
       }
     }
-    if (dom(X2)=="1"){ //5-2
+    if (equal(dom(X2),"1")){ //5-2
       return normalizeAbbreviations("ω");
       if (equal(R,"ε([A])×(1)")){ //5-2-1
         if (isNat(Y)); //5-2-1-1
@@ -1633,9 +1960,9 @@ function dom(X){
   }
   var Z=format["E(ε(0)×(*))"](X,inTnot0);
   if (Z){ //6
-    if (dom(Z)=="1"){ //6-1
-      return X;
-      if (Y=="0"); //6-1-1
+    if (equal(dom(Z),"1")){ //6-1
+      return X+"";
+      if (equal(Y,"0")); //6-1-1
       if (isNat(Y)); //6-1-2
       if (true); //6-1-3
     }
@@ -1647,9 +1974,9 @@ function dom(X){
     var t2=format["*×(*)"](R,inPRT,inTnot0);
     if (t2){ //7-1
       var [R1,Zp]=t2;
-      if (dom(Zp)=="1"){ //7-1-1
-        return X;
-        if (Y=="0"); //7-1-1-1
+      if (equal(dom(Zp),"1")){ //7-1-1
+        return X+"";
+        if (equal(Y,"0")); //7-1-1-1
         if (isNat(Y)); //7-1-1-2
         if (true); //7-1-1-3
       }
@@ -1658,9 +1985,9 @@ function dom(X){
     var t2=format.nest(R,format["*+*"],inRT,format["*×(*)"](inPRT,inTnot0));
     if (t2){ //7-2
       var [Rp,R1,Zp]=t2;
-      if (dom(Zp)=="1"){ //7-2-1
-        return X;
-        if (Y=="0"); //7-2-1-1
+      if (equal(dom(Zp),"1")){ //7-2-1
+        return X+"";
+        if (equal(Y,"0")); //7-2-1-1
         if (isNat(Y)); //7-2-1-2
         if (true); //7-2-1-3
       }
@@ -1672,9 +1999,9 @@ function dom(X){
     var t1=format["*×(*)"](R,inPRT,inTnot0);
     if (t1){ //8-1
       var [R1,Zp]=t1;
-      if (dom(Zp)=="1"){ //8-1-1
-        return X;
-        if (Y=="0"); //8-1-1-1
+      if (equal(dom(Zp),"1")){ //8-1-1
+        return X+"";
+        if (equal(Y,"0")); //8-1-1-1
         if (isNat(Y)); //8-1-1-2
         if (true); //8-1-1-3
       }
@@ -1683,48 +2010,48 @@ function dom(X){
     var t1=format.nest(R,format["*+*"],inRT,format["*×(*)"](inPRT,inTnot0));
     if (t1){ //8-2
       var [Rp,R1,Zp]=t1;
-      if (dom(Zp)=="1"){ //8-2-1
-        return X;
-        if (Y=="0"); //8-2-1-1
+      if (equal(dom(Zp),"1")){ //8-2-1
+        return X+"";
+        if (equal(Y,"0")); //8-2-1-1
         if (isNat(Y)); //8-2-1-2
         if (true); //8-2-1-3
       }
       else return dom(Zp); //8-2-2
     }
   }
-  var Xs=decomposeArrayIfLong(X,inPT,"+");
-  if (Xs&&Xs.length>=2){ //9
+  var Xs=isSumAndTermsSatisfy(X,inPT);
+  if (Xs){ //9
     var m=Xs.length;
     var X1=Xs[0];
     var Xm=Xs[m-1];
     return dom(Xm);
     var XmFund=fund(Xm,Y);
-    if (XmFund=="0"&&m==2); //9-1
-    if (XmFund=="0"&&m>2); //9-2
+    if (equal(XmFund,"0")&&m==2); //9-1
+    if (equal(XmFund,"0")&&m>2); //9-2
     if (inPT(Xm)); //9-3
-    var Zs=decomposeArrayIfLong(XmFund,inT,"+");
-    if (Zs&&Zs.length>=2){ //9-4
+    var Zs=isSumAndTermsSatisfy(XmFund,inT);
+    if (Zs){ //9-4
       var mp=Zs.length;
     }
   }
   throw Error("No rule to compute dom of "+X);
 }
 function fund(X,Y){
-  X=normalizeAbbreviations(X);
+  X=Term(X);
   if (typeof Y=="number") Y=String(Y);
-  Y=normalizeAbbreviations(Y);
+  Y=Term(Y);
   if (!inT(X)||!inT(Y)) throw Error("Invalid argument: "+X+","+Y);
-  if (X=="0") return "0"; //1
-  if (X=="1") return "0"; //2
+  if (equal(X,"0")) return "0"; //1
+  if (equal(X,"1")) return "0"; //2
   var t1=format["EE_*(*)"](X,inAAT,inT);
   if (t1){ //3
     var [X1,X2]=t1;
     if (equal(X1,"A")){ //3-1
-      if (dom(X2)=="0"){ //3-1-1
+      if (equal(dom(X2),"0")){ //3-1-1
         if (isNat(Y)) return "1+"+fund(X,fund(Y,"0")); //3-1-1-1
         else return "1"; //3-1-1-2
       }
-      if (dom(X2)=="1"){ //3-1-2
+      if (equal(dom(X2),"1")){ //3-1-2
         if (isNat(Y)) return "EE_{"+X1+"}("+fund(X2,"0")+")+"+fund(X,fund(Y,"0")); //3-1-2-1
         else return "EE_{"+X1+"}("+fund(X2,"0")+")"; //3-1-2-2
       }
@@ -1792,11 +2119,11 @@ function fund(X,Y){
     var t2=format["*+*"](X1,inAT,equal("A"));
     if (t2){ //3-2
       var [Xp1,_A]=t2;
-      if (dom(X2)=="0"){ //3-2-1
+      if (equal(dom(X2),"0")){ //3-2-1
         if (isNat(Y)) return "E(ε(["+Xp1+"])×("+fund(X,fund(Y,"0"))+"))"; //3-2-1-1
         else return "E(ε(["+Xp1+"])×(1))"; //3-2-1-2
       }
-      if (dom(X2)=="1"){ //3-2-2
+      if (equal(dom(X2),"1")){ //3-2-2
         if (isNat(Y)) return "E(ε(["+Xp1+"])×("+fund(X,fund(Y,"0"))+"))"; //3-2-2-1
         else return "EE_{"+X1+"}("+fund(X2,"0")+")+1"; //3-2-2-2
       }
@@ -1865,7 +2192,7 @@ function fund(X,Y){
   var t1=format["EE_{E(ε(0)×(*)+*)}(*)"](X,inTnot0,inRT,inT);
   if (t1){ //4
     var [Z,R,X2]=t1;
-    if (dom(X2)=="0"){ //4-1
+    if (equal(dom(X2),"0")){ //4-1
       if (equal(R,"ε([A])×(1)")){ //4-1-1
         if (isNat(Y)) return "E(ε(0)×("+Z+"))+"+fund(X,fund(Y,"0")); //4-1-1-1
         else return "E(ε(0)×("+Z+"))"; //4-1-1-2
@@ -1948,8 +2275,8 @@ function fund(X,Y){
         if (equal(dom(Xp),"ω")) return "E(ε(0)×("+Z+")+ε(["+fund(Xp,Y)+"])×("+Z1+"))"; //4-1-9-1
         var Zp=format["E(ε(0)×(*))"](dom(Xp),inTnot0);
         if (Zp){ //4-1-9-2
-          if (Z1=="1"){ //4-1-9-2-1
-            if (Zp=="1"){ //4-1-9-2-1-1
+          if (equal(Z1,"1")){ //4-1-9-2-1
+            if (equal(Zp,"1")){ //4-1-9-2-1-1
               var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(ε(0)×(*)+*)"],equal(Z),format["ε([*])×(*)"](inAT,equal("1")));
               if (t3){ //4-1-9-2-1-1-1
                 var [_Z,G,_1]=t3;
@@ -1967,7 +2294,7 @@ function fund(X,Y){
             }
           }
           else{ //4-1-9-2-2
-            if (Zp=="1"){ //4-1-9-2-2-1
+            if (equal(Zp,"1")){ //4-1-9-2-2-1
               var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(ε(0)×(*)+*)"],equal(Z),format.nest(format["*+*"],equal("ε(["+Xp+"])×("+fund(Z1,"0")+")"),format["ε([*])×(*)"](inAT,equal("1"))));
               if (t3){ //4-1-9-2-2-1-1
                 var [_Z,_C,G,_1]=t3;
@@ -1988,7 +2315,7 @@ function fund(X,Y){
         var t3=format["E(ε(0)×(*)+*)"](dom(Xp),inTnot0,inRT);
         if (t3){ //4-1-9-3
           var [Zp,Rp]=t3;
-          if (Z1=="1"){ //4-1-9-3-1
+          if (equal(Z1,"1")){ //4-1-9-3-1
             var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(ε(0)×(*)+*)"],equal(Z),format["ε([*])×(*)"](inAT,equal("1")));
             if (t3){ //4-1-9-3-1-1
               var [_Z,G,_1]=t3;
@@ -2007,7 +2334,7 @@ function fund(X,Y){
         }
         var Rp=format["E(*)"](dom(Xp),inRT);
         if (Rp){ //4-1-9-4
-          if (Z1=="1"){ //4-1-9-4-1
+          if (equal(Z1,"1")){ //4-1-9-4-1
             var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(ε(0)×(*)+*)"],equal(Z),format["ε([*])×(*)"](inAT,equal("1")));
             if (t3){ //4-1-9-4-1-1
               var [_Z,G,_1]=t3;
@@ -2031,8 +2358,8 @@ function fund(X,Y){
         if (equal(dom(Xp),"ω")) return "E(ε(0)×("+Z+")+"+R1+"+ε(["+fund(Xp,Y)+"])×("+Z1+"))"; //4-1-10-1
         var Zp=format["E(ε(0)×(*))"](dom(Xp),inTnot0);
         if (Zp){ //4-1-10-2
-          if (Z1=="1"){ //4-1-10-2-1
-            if (Zp=="1"){ //4-1-10-2-1-1
+          if (equal(Z1,"1")){ //4-1-10-2-1
+            if (equal(Zp,"1")){ //4-1-10-2-1-1
               var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(ε(0)×(*)+*)"],equal(Z),format.nest(format["*+*"],equal(R1),format["ε([*])×(*)"](inAT,equal("1"))));
               if (t3){ //4-1-10-2-1-1-1
                 var [_Z,_R1,G,_1]=t3;
@@ -2050,7 +2377,7 @@ function fund(X,Y){
             }
           }
           else{ //4-1-10-2-2
-            if (Zp=="1"){ //4-1-10-2-2-1
+            if (equal(Zp,"1")){ //4-1-10-2-2-1
               var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(ε(0)×(*)+*)"],equal(Z),format.nest(format["*+*"],equal(R1),format.nest(format["*+*"],equal("ε(["+Xp+"])×("+fund(Z1,"0")+")"),format["ε([*])×(*)"](inAT,equal("1")))));
               if (t3){ //4-1-10-2-2-1-1
                 var [_Z,_R1,_C,G,_1]=t3;
@@ -2071,7 +2398,7 @@ function fund(X,Y){
         var t3=format["E(ε(0)×(*)+*)"](dom(Xp),inTnot0,inRT);
         if (t3){ //4-1-10-3
           var [Zp,Rp]=t3;
-          if (Z1=="1"){ //4-1-10-3-1
+          if (equal(Z1,"1")){ //4-1-10-3-1
             var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(ε(0)×(*)+*)"],equal(Z),format.nest(format["*+*"],equal(R1),format["ε([*])×(*)"](inAT,equal("1"))));
             if (t3){ //4-1-10-3-1-1
               var [_Z,_R1,G,_1]=t3;
@@ -2090,7 +2417,7 @@ function fund(X,Y){
         }
         var Rp=format["E(*)"](dom(Xp),inRT);
         if (Rp){ //4-1-10-4
-          if (Z1=="1"){ //4-1-10-4-1
+          if (equal(Z1,"1")){ //4-1-10-4-1
             var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(ε(0)×(*)+*)"],equal(Z),format.nest(format["*+*"],equal(R1),format["ε([*])×(*)"](inAT,equal("1"))));
             if (t3){ //4-1-10-4-1-1
               var [_Z,_R1,G,_1]=t3;
@@ -2109,7 +2436,7 @@ function fund(X,Y){
         }
       }
     }
-    if (dom(X2)=="1"){ //4-2
+    if (equal(dom(X2),"1")){ //4-2
       if (equal(R,"ε([A])×(1)")){ //4-2-1
         if (isNat(Y)) return "EE_{E(ε(0)×("+Z+")+"+R+")}("+fund(X2,"0")+")+"+fund(X,fund(Y,"0")); //4-2-1-1
         else return "EE_{E(ε(0)×("+Z+")+"+R+")}("+fund(X2,"0")+")"; //4-2-1-2
@@ -2190,7 +2517,7 @@ function fund(X,Y){
   var t1=format["EE_{E(*)}(*)"](X,inRT,inT);
   if (t1){ //5
     var [R,X2]=t1;
-    if (dom(X2)=="0"){ //5-1
+    if (equal(dom(X2),"0")){ //5-1
       if (equal(R,"ε([A])×(1)")){ //5-1-1
         if (isNat(Y)) return "1+"+fund(X,fund(Y,"0")); //5-1-1-1
         else return "1"; //5-1-1-2
@@ -2279,8 +2606,8 @@ function fund(X,Y){
         if (equal(dom(Xp),"ω")) return "E(ε(["+fund(Xp,Y)+"])×("+Z1+"))"; //5-1-9-1
         var Zp=format["E(ε(0)×(*))"](dom(Xp),inTnot0);
         if (Zp){ //5-1-9-2
-          if (Z1=="1"){ //5-1-9-2-1
-            if (Zp=="1"){ //5-1-9-2-1-1
+          if (equal(Z1,"1")){ //5-1-9-2-1
+            if (equal(Zp,"1")){ //5-1-9-2-1-1
               var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(*)"],format["ε([*])×(*)"](inAT,equal("1")));
               if (t3){ //5-1-9-2-1-1-1
                 var [G,_1]=t3;
@@ -2298,7 +2625,7 @@ function fund(X,Y){
             }
           }
           else{ //5-1-9-2-2
-            if (Zp=="1"){ //5-1-9-2-2-1
+            if (equal(Zp,"1")){ //5-1-9-2-2-1
               var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(*)"],format.nest(format["*+*"],equal("ε(["+Xp+"])×("+fund(Z1,"0")+")"),format["ε([*])×(*)"](inAT,equal("1"))));
               if (t3){ //5-1-9-2-2-1-1
                 var [_C,G,_1]=t3;
@@ -2319,7 +2646,7 @@ function fund(X,Y){
         var t3=format["E(ε(0)×(*)+*)"](dom(Xp),inTnot0,inRT);
         if (t3){ //5-1-9-3
           var [Zp,Rp]=t3;
-          if (Z1=="1"){ //5-1-9-3-1
+          if (equal(Z1,"1")){ //5-1-9-3-1
             var t4=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(*)"],format["ε([*])×(*)"](inAT,equal("1")));
             if (t4){ //5-1-9-3-1-1
               var [G,_1]=t4;
@@ -2338,7 +2665,7 @@ function fund(X,Y){
         }
         var Rp=format["E(*)"](dom(Xp),inRT);
         if (Rp){ //5-1-9-4
-          if (Z1=="1"){ //5-1-9-4-1
+          if (equal(Z1,"1")){ //5-1-9-4-1
             var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(*)"],format["ε([*])×(*)"](inAT,equal("1")));
             if (t3){ //5-1-9-4-1-1
               var [G,_1]=t3;
@@ -2362,8 +2689,8 @@ function fund(X,Y){
         if (equal(dom(Xp),"ω")); //5-1-10-1
         var Zp=format["E(ε(0)×(*))"](dom(Xp),inTnot0);
         if (Zp){ //5-1-10-2
-          if (Z1=="1"){ //5-1-10-2-1
-            if (Zp=="1"){ //5-1-10-2-1-1
+          if (equal(Z1,"1")){ //5-1-10-2-1
+            if (equal(Zp,"1")){ //5-1-10-2-1-1
               var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(*)"],format.nest(format["*+*"],equal(R1),format["ε([*])×(*)"](inAT,equal("1"))));
               if (t3){ //5-1-10-2-1-1-1
                 var [G,_1]=t3;
@@ -2381,7 +2708,7 @@ function fund(X,Y){
             }
           }
           else{ //5-1-10-2-2
-            if (Zp=="1"){ //5-1-10-2-2-1
+            if (equal(Zp,"1")){ //5-1-10-2-2-1
               var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(*)"],format.nest(format["*+*"],equal(R1),format.nest(format["*+*"],equal("ε(["+Xp+"])×("+fund(Z1,"0")+")"),format["ε([*])×(*)"](inAT,equal("1")))));
               if (t3){ //5-1-10-2-2-1-1
                 var [_C,G,_1]=t3;
@@ -2402,7 +2729,7 @@ function fund(X,Y){
         var t3=format["E(ε(0)×(*)+*)"](dom(Xp),inTnot0,inRT);
         if (t3){ //5-1-10-3
           var [Zp,Rp]=t3;
-          if (Z1=="1"){ //5-1-10-3-1
+          if (equal(Z1,"1")){ //5-1-10-3-1
             var t4=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(*)"],format.nest(format["*+*"],equal(R1),format["ε([*])×(*)"](inAT,equal("1"))));
             if (t4){ //5-1-10-3-1-1
               var [G,_1]=t4;
@@ -2421,7 +2748,7 @@ function fund(X,Y){
         }
         var Rp=format["E(*)"](dom(Xp),inRT);
         if (Rp){ //5-1-10-4
-          if (Z1=="1"){ //5-1-10-4-1
+          if (equal(Z1,"1")){ //5-1-10-4-1
             var t3=isNat(Y)&&format.nest(fund(X,fund(Y,"0")),format["E(*)"],format.nest(format["*+*"],equal(R1),format["ε([*])×(*)"](inAT,equal("1"))));
             if (t3){ //5-1-10-4-1-1
               var [G,_1]=t3;
@@ -2440,7 +2767,7 @@ function fund(X,Y){
         }
       }
     }
-    if (dom(X2)=="1"){ //5-2
+    if (equal(dom(X2),"1")){ //5-2
       if (equal(R,"ε([A])×(1)")){ //5-2-1
         if (isNat(Y)) return "EE_{E("+R+")}("+fund(X2,"0")+")+"+fund(X,fund(Y,"0")); //5-2-1-1
         else return "EE_{E("+R+")}("+fund(X2,"0")+")"; //5-2-1-2
@@ -2555,10 +2882,10 @@ function fund(X,Y){
   }
   var Z=format["E(ε(0)×(*))"](X,inTnot0);
   if (Z){ //6
-    if (dom(Z)=="1"){ //6-1
-      if (Y=="0") return "1"; //6-1-1
+    if (equal(dom(Z),"1")){ //6-1
+      if (equal(Y,"0")) return "1"; //6-1-1
       if (isNat(Y)) return Y+"+1"; //6-1-2
-      if (true) return Y; //6-1-3
+      if (true) return Y+""; //6-1-3
     }
     else return "E(ε(0)×("+fund(Z,Y)+"))"; //6-2
   }
@@ -2568,20 +2895,20 @@ function fund(X,Y){
     var t2=format["*×(*)"](R,inPRT,inTnot0);
     if (t2){ //7-1
       var [R1,Zp]=t2;
-      if (dom(Zp)=="1"){ //7-1-1
-        if (Y=="0") return "1"; //7-1-1-1
+      if (equal(dom(Zp),"1")){ //7-1-1
+        if (equal(Y,"0")) return "1"; //7-1-1-1
         if (isNat(Y)) return Y+"+1"; //7-1-1-2
-        if (true) return Y; //7-1-1-3
+        if (true) return Y+""; //7-1-1-3
       }
       else return "E(ε(0)×("+Z+")+"+R1+"×("+fund(Zp,Y)+"))"; //7-1-2
     }
     var t2=format.nest(R,format["*+*"],inRT,format["*×(*)"](inPRT,inTnot0));
     if (t2){ //7-2
       var [Rp,R1,Zp]=t2;
-      if (dom(Zp)=="1"){ //7-2-1
-        if (Y=="0") return "1"; //7-2-1-1
+      if (equal(dom(Zp),"1")){ //7-2-1
+        if (equal(Y,"0")) return "1"; //7-2-1-1
         if (isNat(Y)) return Y+"+1"; //7-2-1-2
-        if (true) return Y; //7-2-1-3
+        if (true) return Y+""; //7-2-1-3
       }
       else return "E(ε(0)×("+Z+")+"+Rp+"+"+R1+"×("+fund(Zp,Y)+"))"; //7-2-2
     }
@@ -2591,35 +2918,35 @@ function fund(X,Y){
     var t1=format["*×(*)"](R,inPRT,inTnot0);
     if (t1){ //8-1
       var [R1,Zp]=t1;
-      if (dom(Zp)=="1"){ //8-1-1
-        if (Y=="0") return "1"; //8-1-1-1
+      if (equal(dom(Zp),"1")){ //8-1-1
+        if (equal(Y,"0")) return "1"; //8-1-1-1
         if (isNat(Y)) return Y+"+1"; //8-1-1-2
-        if (true) return Y; //8-1-1-3
+        if (true) return Y+""; //8-1-1-3
       }
       else return "E("+R1+"×("+fund(Zp,Y)+"))"; //8-1-2
     }
     var t1=format.nest(R,format["*+*"],inRT,format["*×(*)"](inPRT,inTnot0));
     if (t1){ //8-2
       var [Rp,R1,Zp]=t1;
-      if (dom(Zp)=="1"){ //8-2-1
-        if (Y=="0") return "1"; //8-2-1-1
+      if (equal(dom(Zp),"1")){ //8-2-1
+        if (equal(Y,"0")) return "1"; //8-2-1-1
         if (isNat(Y)) return Y+"+1"; //8-2-1-2
-        if (true) return Y; //8-2-1-3
+        if (true) return Y+""; //8-2-1-3
       }
       else return "E("+Rp+"+"+R1+"×("+fund(Zp,Y)+"))"; //8-2-2
     }
   }
-  var Xs=decomposeArrayIfLong(X,inPT,"+");
-  if (Xs&&Xs.length>=2){ //9
+  var Xs=isSumAndTermsSatisfy(X,inPT);
+  if (Xs){ //9
     var m=Xs.length;
     var X1=Xs[0];
     var Xm=Xs[m-1];
     var XmFund=fund(Xm,Y);
-    if (XmFund=="0"&&m==2) return X1; //9-1
-    if (XmFund=="0"&&m>2) return Xs.slice(0,m-1).join("+"); //9-2
+    if (equal(XmFund,"0")&&m==2) return X1+""; //9-1
+    if (equal(XmFund,"0")&&m>2) return Xs.slice(0,m-1).join("+"); //9-2
     if (inPT(Xm)) return Xs.slice(0,m-1).join("+")+"+"+fund(Xm,Y); //9-3
-    var Zs=decomposeArrayIfLong(XmFund,inT,"+");
-    if (Zs&&Zs.length>=2){ //9-4
+    var Zs=isSumAndTermsSatisfy(XmFund,inT);
+    if (Zs){ //9-4
       var mp=Zs.length;
       return Xs.slice(0,m-1).join("+")+"+"+Zs.join("+");
     }
@@ -2630,7 +2957,7 @@ function findOTPath(x,limit){
   x=normalizeAbbreviations(x);
   if (!inT(x)) throw Error("Invalid argument: "+x);
   if (typeof limit=="undefined"||limit==-1) limit=Infinity;
-  if (x=="0"){
+  if (equal(x,"0")){
     return {inOT:true,path:["0"],funds:[-1]};
   }else{
     var n=0;
@@ -2665,8 +2992,8 @@ function inOT(x){
 function functionF(X,n){
   X=normalizeAbbreviations(X);
   if (!inOT(X)||(typeof n!="number")) throw Error("Invalid argument: "+X);
-  if (dom(X)=="0") return n+1; //1
-  if (dom(X)=="1"){ //2
+  if (equal(dom(X),"0")) return n+1; //1
+  if (equal(dom(X),"1")){ //2
     var r=n;
     var X0=fund(X,"0");
     for (var i=0;i<n;i++) r=functionF(X0,r);
@@ -2679,8 +3006,8 @@ function arrow(X,a,b){
   if (!inOT(X)||(typeof a!="number")||(typeof b!="number")) throw Error("Invalid argument: "+X);
   if (a==1) return 1; //1
   if (a>1&&b==1) return a; //2
-  if (a>1&&dom(X)=="0") return Math.pow(a,b); //3
-  if (a>1&&dom(X)=="1"&&b>1) return arrow(fund(X,"0"),a,arrow(X,a,b-1)); //4
+  if (a>1&&equal(dom(X),"0")) return Math.pow(a,b); //3
+  if (a>1&&equal(dom(X),"1")&&b>1) return arrow(fund(X,"0"),a,arrow(X,a,b-1)); //4
   return arrow(fund(X,b),a,b);
 }
 function epsilonGrahamFunction(n){
@@ -2905,7 +3232,7 @@ function compute(){
             result.push(t=fund(t,args[i]));
           }
         }else if (cmd=="inOT"){
-          result=findOTPath(args[0],args[1]);
+          result=findOTPath(args[0],args[1]||3);
         }else{
           result=null;
         }
@@ -2943,7 +3270,7 @@ function compute(){
           output+=(options.abbreviate?abbreviate(result.path[i-1]):result.path[i-1])+"["+result.funds[i]+"]="+(options.abbreviate?abbreviate(result.path[i]):result.path[i])+"\n";
         }
         if (result.inOT) output+=(options.abbreviate?abbreviate(args[0]):args[0])+"∈OT";
-        else output+=(options.abbreviate?abbreviate(args[0]):args[0])+"∉OT limited to n≦"+args[1];
+        else output+=(options.abbreviate?abbreviate(args[0]):args[0])+"∉OT limited to n≦"+(args[1]||3);
       }else{
         output+=result.inOT;
       }
