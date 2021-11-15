@@ -5,34 +5,12 @@ window.onload=function (){
   dg('input').onkeydown=handlekey;
   dg('input').onfocus=handlekey;
   dg('input').onmousedown=handlekey;
-  load();
   compute();
 }
 function dg(s){
   return document.getElementById(s);
 }
 
-function occurrences(string, subString, allowOverlapping) {
-  string+="";
-  subString+="";
-  if (subString.length<=0)return string.length+1;
-  var n=0,
-  pos=0,
-  step=allowOverlapping?1:subString.length;
-  while (true){
-    pos=string.indexOf(subString,pos);
-    if (pos>=0){
-      ++n;
-      pos+=step;
-    }else break;
-  }
-  return n;
-}
-function isMatchingParens(s){
-  return occurrences(s,"{")==occurrences(s,"}")
-    &&occurrences(s,"[")==occurrences(s,"]")
-    &&occurrences(s,"(")==occurrences(s,")");
-}
 function normalizeAbbreviations(s){
   return Term(s)+"";
 }
@@ -40,13 +18,62 @@ function abbreviate(s){
   return Term(s).toString(true);
 }
 
+function Scanner(s){
+  if (s instanceof Scanner) return s.clone();
+  if (typeof s!="string") throw Error("Invalid expression: "+s);
+  if (!(this instanceof Scanner)) return new Scanner(s);
+  this.s=s;
+  this.pos=0;
+  this.length=s.length;
+  return this;
+}
+Scanner.prototype.clone=function (){
+  return new Scanner(this.s);
+}
+Scanner.prototype.next=function (length){
+  if (this.pos>=this.length) return null;
+  if (typeof length=="undefined") length=1;
+  var c=this.s.substring(this.pos,this.pos+length);
+  this.pos+=length;
+  return c;
+}
+Scanner.prototype.nextNumber=function (){
+  var s=this.s.substring(this.pos);
+  var m=s.match(/^[0-9]+/);
+  if (m) {
+    this.pos+=m[0].length;
+    return Number(m[0]);
+  }
+  return null;
+}
+Scanner.prototype.peek=function (length,offset){
+  if (typeof length=="undefined") length=1;
+  if (typeof offset=="undefined") offset=0;
+  if (this.pos+offset>this.length) return null;
+  return this.s.substring(this.pos+offset,this.pos+offset+length);
+}
+Scanner.prototype.move=function (n){
+  this.pos+=n;
+}
+Scanner.prototype.hasNext=function (){
+  return this.pos<this.length;
+}
+Scanner.prototype.finished=function (){
+  return this.pos>=this.length;
+}
+Object.defineProperty(Scanner.prototype,"constructor",{
+  value:Scanner,
+  enumerable:false,
+  writable:true
+});
+
 function Term(s){
   if (s instanceof Term) return s.clone();
   else if (typeof s!="undefined"&&typeof s!="string") throw Error("Invalid expression: "+s);
   if (s) return Term.build(s);
   else return this;
 }
-Term.build=function (s){
+/*Term.build=function (s){
   if (s instanceof Term) return s.clone();
   if (!isMatchingParens(s)) throw Error("Invalid expression: "+s);
   var strin=s;
@@ -135,6 +162,191 @@ Term.build=function (s){
     if (!manipulated) throw Error("Error parsing expression: "+strin);
   }
   return getSubterm(s);
+}*/
+Term.build=function (s,context){
+  if (s instanceof Term) return s.clone();
+  function appendToRSum(term){
+    if (state==START) r=term;
+    else if (state==PLUS) r=SumTerm.buildNoClone([r,term]);
+    else throw Error("Wrong state when attempting to append as sum");
+    state=CLOSEDTERM;
+  }
+  function multiplyLastTerm(right){
+    if (state!=CLOSEDTERM) throw Error("Wrong state when attempting to multiply");
+    if (r instanceof SumTerm){
+      r=SumTerm.buildNoClone(r.terms.slice(0,-1).concat(ProductTerm.buildNoClone(r.terms[r.terms.length-1],right)));
+    }else{
+      r=ProductTerm.buildNoClone(r,right);
+    }
+    state=CLOSEDPRODUCTTERM;
+  }
+  var nums="0123456789";
+  var scanner;
+  if (typeof s=="string") scanner=new Scanner(s);
+  else if (s instanceof Scanner) scanner=s;
+  else throw Error("Invalid expression: "+s);
+  var r=null;
+  var startpos=scanner.pos;
+  var TOP=0;
+  var SMALLEPSILONTERMINNER=1;
+  var SMALLEPSILONBRACKETTERMINNER=2;
+  var CAPITALEPSILONTERMINNER=3;
+  var DOUBLECAPITALEPSILONTERMSUBSCRIPT=4;
+  var DOUBLECAPITALEPSILONTERMINNER=5;
+  var PRODUCTTERMRIGHT=6;
+  var ASUBSCRIPT=7;
+  var BRACES=8;
+  var contextNames=["TOP","SMALLEPSILONTERMINNER","SMALLEPSILONBRACKETTERMINNER","CAPITALEPSILONTERMINNER","DOUBLECAPITALEPSILONTERMSUBSCRIPT","DOUBLECAPITALEPSILONTERMINNER","PRODUCTTERMRIGHT","ASUBSCRIPT","BRACES"];
+  if (typeof context=="undefined") context=TOP;
+  var START=0;
+  var PLUS=1;
+  var CLOSEDTERM=2;
+  var CLOSEDPRODUCTTERM=3;
+  var EXIT=4;
+  var stateNames=["START","PLUS","CLOSEDTERM","CLOSEDPRODUCTTERM","EXIT"];
+  var state=START;
+  while (scanner.hasNext()&&state!=EXIT){
+    var scanpos=scanner.pos;
+    var next=scanner.next();
+    if (nums.indexOf(next)!=-1){
+      if (state!=START&&state!=PLUS) throw Error("Unexpected character "+next+" at position "+scanpos+" in expression "+scanner.s);
+      scanner.move(-1);
+      var num=scanner.nextNumber();
+      if (num==0){
+        appendToRSum(ZeroTerm.build());
+      }else if (num==1){
+        appendToRSum(OneTerm.build());
+      }else{
+        var decomposed;
+        if (state==START) decomposed=[];
+        else if (state==PLUS) decomposed=[r];
+        for (var i=0;i<num;i++){
+          decomposed.push(OneTerm.build());
+        }
+        r=SumTerm.buildNoClone(decomposed);
+        state=CLOSEDTERM;
+      }
+    }else if (next=="ω"||next=="w"){
+      if (state!=START&&state!=PLUS) throw Error("Unexpected character "+next+" at position "+scanpos+" in expression "+scanner.s);
+      appendToRSum(Term.SMALLOMEGA.clone());
+    }else if (next=="A"){
+      if (state!=START&&state!=PLUS) throw Error("Unexpected character "+next+" at position "+scanpos+" in expression "+scanner.s);
+      if (scanner.hasNext()&&scanner.peek()=="_"){
+        scanner.move(1);
+        var subscriptterm=Term.build(scanner,ASUBSCRIPT);
+        appendToRSum(CapitalEpsilonTerm.buildNoClone(ProductTerm.buildNoClone(SmallEpsilonTerm.buildNoClone(ZeroTerm.build()),subscriptterm)));
+      }else{
+        appendToRSum(Term.A.clone());
+      }
+    }else if (next=="+"){
+      if (state==CLOSEDTERM||state==CLOSEDPRODUCTTERM){
+        state=PLUS;
+      }else throw Error("Unexpected character + at position "+scanpos+" in expression "+scanner.s);
+    }else if (next=="×"){
+      if (state!=CLOSEDTERM) throw Error("Unexpected character "+next+" at position "+scanpos+" in expression "+scanner.s);
+      var nextnext=scanner.next();
+      if (nextnext!="(") throw Error("Expected opening ( at position "+(scanner.pos-1)+", instead got "+nextnext+" in expression "+scanner.s);
+      var rightterm=Term.build(scanner,PRODUCTTERMRIGHT);
+      var nextnext=scanner.next();
+      if (nextnext!=")") throw Error("Expected closing ) at position "+(scanner.pos-1)+", instead got "+nextnext+" in expression "+scanner.s);
+      multiplyLastTerm(rightterm);
+    }else if (next=="ε"){
+      if (state!=START&&state!=PLUS) throw Error("Unexpected character "+next+" at position "+scanpos+" in expression "+scanner.s);
+      if (scanner.peek(2)=="(["){
+        scanner.move(2);
+        var innerterm=Term.build(scanner,SMALLEPSILONBRACKETTERMINNER);
+        var nextnext=scanner.next(2);
+        if (nextnext!="])") throw Error("Expected closing ]) at position "+(scanner.pos-2)+", instead got "+nextnext+" in expression "+scanner.s);
+        appendToRSum(SmallEpsilonBracketTerm.buildNoClone(innerterm));
+      }else if (scanner.peek()=="("){
+        scanner.move(1);
+        var innerterm=Term.build(scanner,SMALLEPSILONTERMINNER);
+        var nextnext=scanner.next();
+        if (nextnext!=")") throw Error("Expected closing ) at position "+(scanner.pos-1)+", instead got "+nextnext+" in expression "+scanner.s);
+        appendToRSum(SmallEpsilonTerm.buildNoClone(innerterm));
+      }else throw Error("Expected opening ( or ([ at position "+scanner.pos+", instead got "+scanner.peek()+" in expression "+scanner.s);
+    }else if (next=="E"&&scanner.peek()=="E"){
+      if (state!=START&&state!=PLUS) throw Error("Unexpected character "+next+" at position "+scanpos+" in expression "+scanner.s);
+      scanner.move(1);
+      var nextnext=scanner.next();
+      if (nextnext!="_") throw Error("Expected _ at position "+(scanner.pos-1)+", instead got "+nextnext+" in expression "+scanner.s);
+      var subscriptterm=Term.build(scanner,DOUBLECAPITALEPSILONTERMSUBSCRIPT);
+      var nextnext=scanner.next();
+      if (nextnext!="(") throw Error("Expected opening ( at position "+(scanner.pos-1)+", instead got "+nextnext+" in expression "+scanner.s);
+      innerterm=Term.build(scanner,DOUBLECAPITALEPSILONTERMINNER);
+      var nextnext=scanner.next();
+      if (nextnext!=")") throw Error("Expected closing ) at position "+(scanner.pos-1)+", instead got "+nextnext+" in expression "+scanner.s);
+      appendToRSum(DoubleCapitalEpsilonTerm.buildNoClone(subscriptterm,innerterm));
+    }else if (next=="E"){
+      if (state!=START&&state!=PLUS) throw Error("Unexpected character "+next+" at position "+scanpos+" in expression "+scanner.s);
+      var nextnext=scanner.next();
+      if (nextnext!="(") throw Error("Expected opening ( at position "+(scanner.pos-1)+", instead got "+nextnext+" in expression "+scanner.s);
+      innerterm=Term.build(scanner,CAPITALEPSILONTERMINNER);
+      var nextnext=scanner.next();
+      if (nextnext!=")") throw Error("Expected closing ) at position "+(scanner.pos-1)+", instead got "+nextnext+" in expression "+scanner.s);
+      appendToRSum(CapitalEpsilonTerm.buildNoClone(innerterm));
+    }else if (next=="{"){
+      if (state!=START&&state!=PLUS) throw Error("Unexpected character { at position "+scanpos+" in expression "+scanner.s);
+      var subterm=Term.build(scanner,BRACES);
+      var nextnext=scanner.next();
+      if (nextnext!="}") throw Error("Expected closing } at position "+(scanner.pos-1)+", instead got "+nextnext+" in expression "+scanner.s);
+      if (state==START){
+        r=subterm;
+        state=CLOSEDTERM;
+      }else if (state==PLUS){
+        r=SubTerm.buildNoClone([r,subterm]);
+        state=CLOSEDTERM;
+      }
+    }else{
+      throw Error("Unexpected character "+next+" at position "+scanpos+" in expression "+scanner.s);
+    }
+    if (state==CLOSEDTERM||state==CLOSEDPRODUCTTERM){
+      var peek=scanner.peek();
+      /*
+    var TOP=0;
+    var SMALLEPSILONTERMINNER=1;
+    var SMALLEPSILONBRACKETTERMINNER=2;
+    var CAPITALEPSILONTERMINNER=3;
+    var DOUBLECAPITALEPSILONTERMSUBSCRIPT=4;
+    var DOUBLECAPITALEPSILONTERMINNER=5;
+    var PRODUCTTERMRIGHT=6;
+    var ASUBSCRIPT=7;
+    var BRACES=8;
+    */
+      if (context==SMALLEPSILONTERMINNER&&peek==")"){
+        state=EXIT;
+      }else if (context==SMALLEPSILONBRACKETTERMINNER&&scanner.peek(2)=="])"){
+        state=EXIT;
+      }else if (context==CAPITALEPSILONTERMINNER&&peek==")"){
+        state=EXIT;
+      }else if (context==DOUBLECAPITALEPSILONTERMSUBSCRIPT&&peek=="("){
+        state=EXIT;
+      }else if (context==DOUBLECAPITALEPSILONTERMINNER&&peek==")"){
+        state=EXIT;
+      }else if (context==PRODUCTTERMRIGHT&&peek==")"){
+        state=EXIT;
+      }else if (context==ASUBSCRIPT&&(peek=="+"||peek=="×"||peek==")"||peek=="]")){
+        state=EXIT;
+      }else if (context==BRACES&&peek=="}"){
+        state=EXIT;
+      }
+    }
+  }
+  if (context==TOP){
+    if (scanner.hasNext()) throw Error("Something went wrong");
+    if (state==START) r=ZeroTerm.build();
+    else if (state==PLUS) throw Error("Unexpected end of input");
+    else if (state==CLOSEDTERM||state==CLOSEDPRODUCTTERM);
+  }else{
+    if (!scanner.hasNext()) throw Error("Unexpected end of input");
+    if (state==START) r=ZeroTerm.build();
+    else if (state==PLUS) throw Error("Something went wrong");
+    else if (state==CLOSEDTERM||state==CLOSEDPRODUCTTERM);
+  }
+  return r;
+}
+Term.buildNoClone=function (){
+  throw Error("Not implemented");
 }
 Term.prototype.clone=function (){
   throw Error("Cloning undefined for this term type.");
@@ -174,6 +386,10 @@ NullTerm.build=function (){
   var r=NullTerm();
   return r;
 }
+NullTerm.buildNoClone=function (){
+  var r=NullTerm();
+  return r;
+}
 NullTerm.prototype=Object.create(Term.prototype);
 NullTerm.prototype.clone=function (){
   return NullTerm.build();
@@ -204,6 +420,10 @@ ZeroTerm.build=function (){
   var r=ZeroTerm();
   return r;
 }
+ZeroTerm.buildNoClone=function (){
+  var r=ZeroTerm();
+  return r;
+}
 ZeroTerm.prototype=Object.create(Term.prototype);
 ZeroTerm.prototype.clone=function (){
   return ZeroTerm.build();
@@ -231,6 +451,10 @@ function OneTerm(s){
 }
 Object.assign(OneTerm,Term);
 OneTerm.build=function (){
+  var r=OneTerm();
+  return r;
+}
+OneTerm.buildNoClone=function (){
   var r=OneTerm();
   return r;
 }
@@ -265,6 +489,11 @@ SmallEpsilonTerm.build=function (inner){
   r.inner=Term(inner);
   return r;
 }
+SmallEpsilonTerm.buildNoClone=function (inner){
+  var r=SmallEpsilonTerm();
+  r.inner=inner;
+  return r;
+}
 SmallEpsilonTerm.prototype=Object.create(Term.prototype);
 SmallEpsilonTerm.prototype.clone=function (){
   return SmallEpsilonTerm.build(this.inner);
@@ -294,6 +523,11 @@ Object.assign(SmallEpsilonBracketTerm,Term);
 SmallEpsilonBracketTerm.build=function (inner){
   var r=SmallEpsilonBracketTerm();
   r.inner=Term(inner);
+  return r;
+}
+SmallEpsilonBracketTerm.buildNoClone=function (inner){
+  var r=SmallEpsilonBracketTerm();
+  r.inner=inner;
   return r;
 }
 SmallEpsilonBracketTerm.prototype=Object.create(Term.prototype);
@@ -334,6 +568,18 @@ CapitalEpsilonTerm.build=function (inner){
   }
   return r;
 }
+CapitalEpsilonTerm.buildNoClone=function (inner){
+  var r=CapitalEpsilonTerm();
+  inner=inner;
+  if (inner instanceof SumTerm){
+    r.inner=SumTerm.buildNoClone(inner.terms.map(function (s){return s instanceof ProductTerm?s:ProductTerm.buildNoClone(s,OneTerm.build());}));
+  }else if (inner instanceof ProductTerm){
+    r.inner=inner;
+  }else{
+    r.inner=ProductTerm.buildNoClone(inner,OneTerm.build());
+  }
+  return r;
+}
 CapitalEpsilonTerm.prototype=Object.create(Term.prototype);
 CapitalEpsilonTerm.prototype.clone=function (){
   return CapitalEpsilonTerm.build(this.inner);
@@ -371,6 +617,12 @@ DoubleCapitalEpsilonTerm.build=function (sub,inner){
   r.inner=Term(inner);
   return r;
 }
+DoubleCapitalEpsilonTerm.buildNoClone=function (sub,inner){
+  var r=DoubleCapitalEpsilonTerm();
+  r.sub=sub;
+  r.inner=inner;
+  return r;
+}
 DoubleCapitalEpsilonTerm.prototype=Object.create(Term.prototype);
 DoubleCapitalEpsilonTerm.prototype.clone=function (){
   return DoubleCapitalEpsilonTerm.build(this.sub,this.inner);
@@ -402,6 +654,12 @@ ProductTerm.build=function (left,right){
   var r=ProductTerm();
   r.left=Term(left);
   r.right=Term(right);
+  return r;
+}
+ProductTerm.buildNoClone=function (left,right){
+  var r=ProductTerm();
+  r.left=left;
+  r.right=right;
   return r;
 }
 ProductTerm.prototype=Object.create(Term.prototype);
@@ -443,6 +701,18 @@ SumTerm.build=function (terms){
   }
   return r;
 }
+SumTerm.buildNoClone=function (terms){
+  var r=SumTerm();
+  r.terms=[];
+  for (var i=0;i<terms.length;i++){
+    if (terms[i] instanceof SumTerm){
+      r.terms=r.terms.concat(terms[i].terms);
+    }else{
+      r.terms.push(terms[i]);
+    }
+  }
+  return r;
+}
 SumTerm.prototype=Object.create(Term.prototype);
 SumTerm.prototype.clone=function (){
   return SumTerm.build(this.terms);
@@ -473,14 +743,16 @@ SumTerm.prototype.getLeft=function (){
   return Term(this.terms[0]);
 }
 SumTerm.prototype.getNotLeft=function (){
-  if (this.terms.length<=2) return Term(this.terms[1]);
+  if (this.terms.length<2) return ZeroTerm.build();
+  else if (this.terms.length<=2) return Term(this.terms[1]);
   else return SumTerm.build(this.terms.slice(1));
 }
 SumTerm.prototype.getRight=function (){
   return Term(this.terms[this.terms.length-1]);
 }
 SumTerm.prototype.getNotRight=function (){
-  if (this.terms.length<=2) return Term(this.terms[0]);
+  if (this.terms.length<2) return ZeroTerm.build();
+  else if (this.terms.length<=2) return Term(this.terms[0]);
   else return SumTerm.build(this.terms.slice(0,-1));
 }
 SumTerm.prototype.slice=function (start,end){
@@ -496,6 +768,9 @@ Object.defineProperty(SumTerm.prototype,"constructor",{
   enumerable:false,
   writable:true
 });
+
+Term.A=Term("E(ε(0)×(1))");
+Term.SMALLOMEGA=Term("EE_{E(ε([A])×(1))}(0)");
 
 function removeBrace(s){
   return s.startsWith("{")&&s.endsWith("}")?s.slice(1,-1):s;
@@ -3238,6 +3513,7 @@ function compute(){
         }
       }catch(e){
         result=e;
+        console.error(e);
       }
       last[l]=result;
     }else result=last[l];
@@ -3282,56 +3558,8 @@ function compute(){
   dg("output").value=output;
 }
 window.onpopstate=function (e){
-  load();
   compute();
 }
-/*function saveSimple(clipboard){
-  var encodedInput=input.split(lineBreakRegex).map(e=>e.split(itemSeparatorRegex).map(parseSequenceElement).map(e=>e.forcedParent?e.value+"v"+e.parentIndex:e.value)).join(";");
-  history.pushState(encodedInput,"","?"+encodedInput);
-  if (clipboard){
-    var copyarea=dg("copyarea");
-    copyarea.value=location.href;
-    copyarea.style.display="";
-    copyarea.select();
-    copyarea.setSelectionRange(0,99999);
-    document.execCommand("copy");
-    copyarea.style.display="none";
-  }
-}
-function saveDetailed(clipboard){
-  var state={};
-  for (var i of options){
-    state[i]=window[i];
-  }
-  var encodedState=btoa(JSON.stringify(state)).replace(/\+/g,"-").replace(/\//g,"_").replace(/\=/g,"");
-  history.pushState(state,"","?"+encodedState);
-  if (clipboard){
-    var copyarea=dg("copyarea");
-    copyarea.value=location.href;
-    copyarea.style.display="";
-    copyarea.select();
-    copyarea.setSelectionRange(0,99999);
-    document.execCommand("copy");
-    copyarea.style.display="none";
-  }
-}*/
-function load(){/*
-  var encodedState=location.search.slice(1);
-  if (!encodedState) return;
-  try{
-    var state=encodedState.replace(/\-/g,"+").replace(/_/g,"/");
-    if (state.length%4) state+="=".repeat(4-state.length%4);
-    state=JSON.parse(atob(state));
-  }catch (e){ //simple
-    var input=encodedState.replace(/;/g,"\r\n");
-    dg("input").value=input;
-  }finally{ //detailed
-    console.log(state);
-    for (var i of options){
-      if (state[i]) dg(i).value=state[i];
-    }
-  }
-*/}
 var handlekey=function(e){}
 //console.log=function (s){alert(s)};
 window.onerror=function (e,s,l,c,o){alert(JSON.stringify(e+"\n"+s+":"+l+":"+c+"\n"+o.stack))};
