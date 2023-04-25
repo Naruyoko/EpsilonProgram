@@ -73,96 +73,6 @@ function Term(s){
   if (s) return Term.build(s);
   else return this;
 }
-/*Term.build=function (s){
-  if (s instanceof Term) return s.clone();
-  if (!isMatchingParens(s)) throw Error("Invalid expression: "+s);
-  var strin=s;
-  if (s=="") return NullTerm.build();
-  if (s=="0") return ZeroTerm.build();
-  if (s=="1") return OneTerm.build();
-  //s=normalizeAbbreviations(s);
-  if (!/^[AE_\(\)\[\]{}0-9εω\+×]+$/.test(s)) throw Error("Invalid expression: "+strin);
-  var nums="0123456789";
-  var alphas="abcdefghij";
-  function numToAlpha(n){
-    n=n+"";
-    for (var i=0;i<10;i++){
-      n=n.replaceAll(nums[i],alphas[i]);
-    }
-    return "<"+n+">";
-  }
-  function alphaToNum(s){
-    if (s[0]!="<"||s[s.length-1]!=">") throw Error("F");
-    s=s.slice(1,-1);
-    for (var i=0;i<10;i++){
-      s=s.replaceAll(alphas[i],nums[i]);
-    }
-    return +s;
-  }
-  var subterms=[];
-  function newSubterm(t){
-    subterms.push(t);
-    return numToAlpha(subterms.length-1);
-  }
-  function getSubterm(n){
-    return subterms[alphaToNum(n)];
-  }
-  s=s.replace(/[0-9]+/g,function (n){return +n<2?n:"{1"+"+1".repeat(+n-1)+"}";});
-  while (true){
-    var manipulated=false;
-    if (s.indexOf("ω")!=-1){ //ω
-      manipulated=true;
-      s=s.replaceAll("ω",newSubterm(Term("EE_{E(ε([A])×(1))}(0)")));
-    }
-    if (/A(?!_)/.test(s)){ //A
-      manipulated=true;
-      s=s.replace(/A(?!_)/g,newSubterm(Term("E(ε(0)×(1))")));
-    }
-    if (s.indexOf("0")!=-1){ //0
-      manipulated=true;
-      s=s.replaceAll("0",newSubterm(ZeroTerm.build()));
-    }
-    if (s.indexOf("1")!=-1){ //1
-      manipulated=true;
-      s=s.replaceAll("1",newSubterm(OneTerm.build()));
-    }
-    if (/{<[a-j]+>}/.test(s)){ //{#}->#
-      manipulated=true;
-      s=s.replace(/{<[a-j]+>}/g,function (s){return s.slice(1,-1);});
-    }
-    if (/A_<[a-j]+>/.test(s)){ //A_#->E(ε(0)×(#))
-      manipulated=true;
-      s=s.replace(/A_<[a-j]+>/g,function (s){return "E(ε(0)×("+s.slice(2)+"))"});
-    }
-    if (/ε\(<[a-j]+>\)/.test(s)){ //ε(#)->#
-      manipulated=true;
-      s=s.replace(/ε\(<[a-j]+>\)/g,function (s){return newSubterm(SmallEpsilonTerm.build(getSubterm(s.slice(2,-1))));});
-    }
-    if (/ε\(\[<[a-j]+>\]\)/.test(s)){ //ε([#])->#
-      manipulated=true;
-      s=s.replace(/ε\(\[<[a-j]+>\]\)/g,function (s){return newSubterm(SmallEpsilonBracketTerm.build(getSubterm(s.slice(3,-2))));});
-    }
-    if (/E\(<[a-j]+>\)/.test(s)){ //E(#)->#
-      manipulated=true;
-      s=s.replace(/E\(<[a-j]+>\)/g,function (s){return newSubterm(CapitalEpsilonTerm.build(getSubterm(s.slice(2,-1))));});
-    }
-    if (/EE_<[a-j]+>\(<[a-j]+>\)/.test(s)){ //EE_#(#)->#
-      manipulated=true;
-      s=s.replace(/EE_<[a-j]+>\(<[a-j]+>\)/g,function (s){return newSubterm(DoubleCapitalEpsilonTerm.build(getSubterm(s.slice(3,s.indexOf("("))),getSubterm(s.slice(s.indexOf("(")+1,-1))));});
-    }
-    if (/<[a-j]+>×\(<[a-j]+>\)/.test(s)){ //#×(#)->#
-      manipulated=true;
-      s=s.replace(/<[a-j]+>×\(<[a-j]+>\)/g,function (s){return newSubterm(ProductTerm.build(getSubterm(s.slice(0,s.indexOf("×"))),getSubterm(s.slice(s.indexOf("(")+1,-1))));});
-    }
-    if (/<[a-j]+>(\+<[a-j]+>)+(?!×)/.test(s)){ //#+#+...+#->#
-      manipulated=true;
-      s=s.replace(/<[a-j]+>(\+<[a-j]+>)+(?!×)/g,function (s){return newSubterm(SumTerm.build(s.split("+").map(getSubterm)));});
-    }
-    if (/^<[a-j]+>$/.test(s)) break;
-    if (!manipulated) throw Error("Error parsing expression: "+strin);
-  }
-  return getSubterm(s);
-}*/
 Term.build=function (s,context){
   if (s instanceof Term) return s.clone();
   function appendToRSum(term){
@@ -302,17 +212,6 @@ Term.build=function (s,context){
     }
     if (state==CLOSEDTERM||state==CLOSEDPRODUCTTERM){
       var peek=scanner.peek();
-      /*
-    var TOP=0;
-    var SMALLEPSILONTERMINNER=1;
-    var SMALLEPSILONBRACKETTERMINNER=2;
-    var CAPITALEPSILONTERMINNER=3;
-    var DOUBLECAPITALEPSILONTERMSUBSCRIPT=4;
-    var DOUBLECAPITALEPSILONTERMINNER=5;
-    var PRODUCTTERMRIGHT=6;
-    var ASUBSCRIPT=7;
-    var BRACES=8;
-    */
       if (context==SMALLEPSILONTERMINNER&&peek==")"){
         state=EXIT;
       }else if (context==SMALLEPSILONBRACKETTERMINNER&&scanner.peek(2)=="])"){
@@ -628,7 +527,7 @@ DoubleCapitalEpsilonTerm.prototype.clone=function (){
   return DoubleCapitalEpsilonTerm.build(this.sub,this.inner);
 }
 DoubleCapitalEpsilonTerm.prototype.toString=function (abbreviate){
-  if (this.equal("ω")) return "ω";
+  if (this.equal(Term.SMALLOMEGA)) return "ω";
   else return "EE_"+this.sub.toStringWithImplicitBrace(abbreviate)+"("+this.inner.toString(abbreviate)+")";
 }
 DoubleCapitalEpsilonTerm.prototype.equal=function (other){
@@ -3561,5 +3460,3 @@ window.onpopstate=function (e){
   compute();
 }
 var handlekey=function(e){}
-//console.log=function (s){alert(s)};
-window.onerror=function (e,s,l,c,o){alert(JSON.stringify(e+"\n"+s+":"+l+":"+c+"\n"+o.stack))};
